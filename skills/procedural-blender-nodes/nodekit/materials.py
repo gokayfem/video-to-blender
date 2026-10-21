@@ -5,7 +5,8 @@ import bpy
 def material(name):
     """Get-or-create a node material named ``name`` with an emptied tree (rebuilt on every build)."""
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
-    m.use_nodes = True
+    if m.node_tree is None:                  # Blender 5.x materials always use nodes; use_nodes is deprecated
+        m.use_nodes = True
     m.node_tree.nodes.clear()
     return m
 

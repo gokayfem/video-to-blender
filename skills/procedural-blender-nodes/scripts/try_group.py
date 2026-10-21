@@ -72,7 +72,7 @@ scene.render_setup(a.width, int(a.width * 704 / 1280) // 2 * 2, a.samples)
 
 print("STATS", json.dumps(inspect.evaluated_stats(ob)))
 print("WARNINGS", [(w_.type, w_.message) for w_ in mod.node_warnings])
-print("LINT", json.dumps(inspect.check_groups("SS ")))
+print("LINT", json.dumps(inspect.check_groups("")))
 if a.png:
     pathlib.Path(a.png).parent.mkdir(parents=True, exist_ok=True)
     bpy.context.scene.render.filepath = str(pathlib.Path(a.png).resolve())

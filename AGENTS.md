@@ -77,6 +77,11 @@ Blender 5.2+ is required (`$BLENDER`, `blender` on PATH, or the macOS app bundle
 - Drivers only update for the window's scene in background mode: set `bpy.context.window.scene` before
   `frame_set`, and render with `bpy.ops.render.render(scene=...)`.
 - A shader Attribute node returns 0 for a missing attribute: store terms where 0 means "no effect".
+- Simulation zones: Delta Time = 1/fps; without a bake, jumping frames advances only one step, so step every
+  frame from the start (or bake first); going back to the start frame resets. Any Scene Time node makes the whole
+  modifier re-evaluate every frame, even multiplied by 0.
+- Looks need the full name (`"AgX - Base Contrast"`); there is no Composite node (group output instead);
+  Compare/Random Value socket identifiers changed in 5.2: look sockets up by name.
 - argparse: pass negative values as `--values=-1,3`, `--cam=-2,0,1:...`.
 
 ## Definition of done

@@ -159,4 +159,11 @@ def evaluated_stats(obj, scene=None):
              "materials": sorted({ev.material_slots[p.material_index].name for p in m.polygons
                                   if p.material_index < len(ev.material_slots)})}
     ev.to_mesh_clear()
+    try:                                       # point clouds and curves are not part of to_mesh()
+        gs = ev.evaluated_geometry()
+        pc = gs.pointcloud
+        stats["points"] = len(pc.points) if pc else 0
+        stats["curves"] = len(gs.curves.curves) if gs.curves else 0
+    except (AttributeError, RuntimeError):
+        pass
     return stats

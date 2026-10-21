@@ -160,7 +160,8 @@ class Graph:
     def group(self, tree, label=None, **inputs):
         """Instance another node group (a ``Graph`` or a bpy node group)."""
         tree = tree.nt if isinstance(tree, Graph) else tree
-        idname = "GeometryNodeGroup" if self.kind == "GEOMETRY" else "ShaderNodeGroup"
+        idname = {"GEOMETRY": "GeometryNodeGroup", "SHADER": "ShaderNodeGroup",
+                  "COMPOSITOR": "CompositorNodeGroup"}[self.kind]
         b = self.nt.nodes.new(idname)
         b.node_tree = tree
         b.label = label or ""

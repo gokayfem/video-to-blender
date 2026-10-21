@@ -9,6 +9,8 @@ FPS = 24
 
 
 def reset():
+    """Empty the file. This frees every datablock, including node groups built before it: call it first, then
+    build groups (build-once caches from before a reset point at freed trees)."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.fps = FPS

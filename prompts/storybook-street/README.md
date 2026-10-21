@@ -1,4 +1,11 @@
-# Video2Nodes
+# Storybook Street (worked project)
+
+This project lives in `prompts/storybook-street/` of the video-to-blender repository. It is the first
+reference-to-nodes project, built with the `procedural-blender-nodes` skill: `scripts/...` paths below are in
+`skills/procedural-blender-nodes/scripts/`, and `tools/demo.py` / `tools/light_probe.py` are this project's own.
+Run commands from this folder.
+
+## Origin: Video2Nodes
 
 Turn an AI-generated reference video into an editable, reusable Blender node system: native Geometry Nodes,
 Shader Nodes and a compositor graph, organised into readable node groups with meaningful controls.
@@ -66,7 +73,7 @@ blender -b --factory-startup --python street/build.py
 ```
 
 ```bash
-blender -b street/storybook_street.blend --python tools/validate.py
+blender -b street/storybook_street.blend --python ../../skills/procedural-blender-nodes/scripts/validate.py -- --hide "Show Walker"
 ```
 
 ```bash
@@ -74,15 +81,15 @@ python3 tools/demo.py --steps seq,compare,variations,transfer
 ```
 
 ```bash
-python3 tools/graph_doc.py street/storybook_street.graph.json
+python3 ../../skills/procedural-blender-nodes/scripts/graph_doc.py street/storybook_street.graph.json --top "Storybook Street" --out docs
 ```
 
 - `build.py` writes the .blend and `storybook_street.graph.json`, a dump of every node group.
 - `validate.py` reopens the file and checks every scene: node warnings, counts, and the follow camera's clearance.
 - `demo.py` renders the sequence, comparison, variations and transfers into `out/demo/`.
 - `graph_doc.py` regenerates `docs/GRAPH.md` and `docs/CONTROLS.md` from that dump.
-- Use `tools/render.py` for stills, sequences and presets, and `tools/sweep.py` for control sweeps.
-- `tools/graph_shots.py` takes node-editor screenshots. It needs a display, so run it without `-b`.
+- Use `scripts/render.py` for stills, sequences and presets, and `scripts/sweep.py` for control sweeps.
+- `scripts/graph_shots.py` takes node-editor screenshots. It needs a display, so run it without `-b`.
 
 ## Using it
 
@@ -123,12 +130,12 @@ See [docs/WORKFLOW.md](docs/WORKFLOW.md) for the process, [AGENTS.md](AGENTS.md)
   simulation zone, because the reference shows nothing that needs stored state. Its bunting barely moves
   (under 1° of lantern swing) and is explained by analytic sway. See `docs/REFERENCE.md`.
 - **Look.** EEVEE with ray-traced GI and AgX. The sun, sky and exposure were fitted to the reference with
-  `tools/compare.py`. The compositor graph `SS Post <scene>` adds distance haze toward the warm horizon,
+  `scripts/compare.py`. The compositor graph `SS Post <scene>` adds distance haze toward the warm horizon,
   computed on premultiplied geometry, a screen-space sky gradient and a soft glow.
 
 ## Validation
 
-Checked on the final file (`tools/validate.py`, `tools/compare.py`, and the commands above):
+Checked on the final file (`scripts/validate.py`, `scripts/compare.py`, and the commands above):
 
 - **Rebuilds deterministically.** Two builds from nothing produce identical graph dumps: 56 node groups and
   33 materials, with zero lint problems (undocumented inputs, dangling nodes, invalid links).
