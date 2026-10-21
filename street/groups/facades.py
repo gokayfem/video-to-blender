@@ -31,8 +31,8 @@ NAME = "SS Facades"
 FACADE_DEPTH = 4.5       # house depth behind the facade
 
 # plaster albedo and share of houses (docs/REFERENCE.md 2: ~40% cream/peach, 30% ochre/orange, 20% yellow, 10% sage)
-PALETTE = [("Cream", "#E2B985", 0.22), ("Peach", "#E3A57E", 0.18), ("Ochre", "#C98A4E", 0.16),
-           ("Terracotta", "#BC6E44", 0.14), ("Yellow", "#D6A24E", 0.2), ("Sage", "#A3A486", 0.1)]
+PALETTE = [("Cream", "#D9AE7C", 0.16), ("Peach", "#D79A66", 0.3), ("Ochre", "#C7864C", 0.2),
+           ("Terracotta", "#BD7650", 0.12), ("Yellow", "#CE9E5E", 0.12), ("Sage", "#A09D80", 0.1)]
 DOORS = [("Door Brown", "#6E4428"), ("Door Teal", "#2F6E73"), ("Door Green", "#3F6E4E")]
 
 
@@ -118,9 +118,9 @@ def plan():
                  desc="Ground storey height")
     fh = g.input("Floor Height", "FLOAT", 1.5, min=1.0, max=3.0, subtype="DISTANCE", panel="Houses",
                  desc="Upper storey height")
-    jet = g.input("Jetty Depth", "FLOAT", 0.3, min=0.0, max=0.6, subtype="DISTANCE", panel="Houses",
+    jet = g.input("Jetty Depth", "FLOAT", 0.18, min=0.0, max=0.6, subtype="DISTANCE", panel="Houses",
                   desc="How far each upper storey overhangs the one below")
-    tden = g.input("Timber Density", "FLOAT", 0.75, min=0.0, max=1.0, subtype="FACTOR", panel="Timber",
+    tden = g.input("Timber Density", "FLOAT", 0.6, min=0.0, max=1.0, subtype="FACTOR", panel="Timber",
                    desc="Share of houses with half-timber frames (the rest are plain plaster)")
     tmix = g.input("Brace Mix", "FLOAT", 0.65, min=0.0, max=1.0, subtype="FACTOR", panel="Timber",
                    desc="Share of timbered houses that get braces or crosses rather than plain posts and rails")
@@ -131,9 +131,9 @@ def plan():
     shch = g.input("Shutter Chance", "FLOAT", 0.65, min=0.0, max=1.0, subtype="FACTOR", panel="Windows",
                    desc="Share of houses with shutters")
     shcol = g.input("Shutter Color", "COLOR", fm.hexc("#4F6E58"), panel="Windows", desc="Shutter paint")
-    shop = g.input("Shop Chance", "FLOAT", 0.35, min=0.0, max=1.0, subtype="FACTOR", panel="Doors & Shops",
+    shop = g.input("Shop Chance", "FLOAT", 0.45, min=0.0, max=1.0, subtype="FACTOR", panel="Doors & Shops",
                    desc="Share of houses with a shopfront on the ground floor")
-    archc = g.input("Arch Chance", "FLOAT", 0.5, min=0.0, max=1.0, subtype="FACTOR", panel="Doors & Shops",
+    archc = g.input("Arch Chance", "FLOAT", 0.6, min=0.0, max=1.0, subtype="FACTOR", panel="Doors & Shops",
                     desc="Share of doors with a round arch")
     dcols = [g.input(n, "COLOR", fm.hexc(hx), panel="Doors & Shops", desc=f"{n.split()[1]} door and fascia paint")
              for n, hx in DOORS]
@@ -141,6 +141,8 @@ def plan():
                    desc="Share of houses with a gable to the street (else eaves to the street)")
     smix = g.input("Slate Mix", "FLOAT", 0.2, min=0.0, max=1.0, subtype="FACTOR", panel="Roof",
                    desc="Share of roofs in blue slate (else clay tile)")
+    tower = g.input("Tower Chance", "FLOAT", 0.06, min=0.0, max=1.0, subtype="FACTOR", panel="Roof",
+                    desc="Share of houses built two storeys taller with a steep blue slate spire roof")
     chim = g.input("Chimney Chance", "FLOAT", 0.55, min=0.0, max=1.0, subtype="FACTOR", panel="Roof",
                    desc="Share of houses with a chimney")
     tile = g.input("Tile Color", "COLOR", fm.hexc("#A65A3A"), panel="Roof", desc="Clay tile colour")
@@ -167,10 +169,12 @@ def plan():
         put("h_storeys", g.math("ROUND", half(g, add(g, R(lo, hi, 1), R(lo, hi, 24)))), "INT")
         put("h_ground_h", mul(g, gh, R(0.97, 1.03, 2)))
         put("h_floor_h", mul(g, fh, R(0.95, 1.05, 3)))
-        put("h_jetty", jet)
         put("h_level", mul(g, ch, 0.55))
         put("h_plinth", C(0.3, 23), "BOOLEAN")
         put("ss_rand", R(0.0, 1.0, 4))
+        put("h_tower", C(tower, 26), "BOOLEAN")
+        put("h_storeys", add(g, attr(g, "h_storeys", "INT"), sw(g, attr(g, "h_tower", "BOOLEAN"), 0, 2, "INT")),
+            "INT")
     with g.frame("Plaster colour: one of the palette, value jittered"):
         r, acc, pick = R(0.0, 1.0, 5), 0.0, 0.0
         for _, _, share in PALETTE[:-1]:                         # index = how many cumulative shares r exceeds
@@ -182,6 +186,7 @@ def plan():
         braced = add(g, sw(g, C(0.5, 9), 0, 1, "INT"), 2.0)
         pat = sw(g, C(tmix, 8), 1, braced, "INT")
         put("h_timber", sw(g, C(tden, 7), 0, pat, "INT"), "INT")
+        put("h_jetty", mul(g, jet, cmp(g, attr(g, "h_timber", "INT"), 0.5)))     # plain houses stand flush
     with g.frame("Windows: columns per storey from the width, sizes that fit with their shutters"):
         w = attr(g, "h_width")
         cols = mn(g, mx(g, g.math("ROUND", mul(g, w, wden)), 1.0), 4.0)
@@ -211,12 +216,13 @@ def plan():
         put("h_shop", both(g, C(shop, 17), cmp(g, span, 1.2)), "BOOLEAN")
         n = sw(g, cmp(g, span, 2.3), sw(g, cmp(g, span, 0.9), 0, 1, "INT"), 2, "INT")
         put("h_gwin", sw(g, attr(g, "h_shop", "BOOLEAN"), n, 0, "INT"), "INT")
-        gw = mn(g, mul(g, 0.62, wsize), sub(g, half(g, div(g, span, mx(g, attr(g, "h_gwin", "INT"), 1.0))), 0.18))
-        put("h_gwin_w", gw)
-        put("h_gwin_h", mn(g, mul(g, 0.82, wsize), sub(g, gh, 1.0)))
+        gw = mn(g, mul(g, 0.72, wsize), sub(g, half(g, div(g, span, mx(g, attr(g, "h_gwin", "INT"), 1.0))), 0.18))
+        put("h_gwin_w", mn(g, gw, 0.75))
+        put("h_gwin_h", mn(g, mul(g, 0.95, wsize), sub(g, gh, 0.8)))
     with g.frame("Roof: gable or eaves to the street, clay or slate, chimney"):
-        put("h_gable", C(gmix, 18), "BOOLEAN")
-        put("h_slate", C(smix, 19), "BOOLEAN")
+        tw = attr(g, "h_tower", "BOOLEAN")
+        put("h_gable", both(g, C(gmix, 18), tw, "OR"), "BOOLEAN")
+        put("h_slate", both(g, C(smix, 19), tw, "OR"), "BOOLEAN")
         rc = sw(g, attr(g, "h_slate", "BOOLEAN"), tile, slate, "RGBA")
         put("h_roof_color", g.vmath("SCALE", rc, scale=R(0.85, 1.1, 20)), "FLOAT_COLOR")
         put("h_chimney", C(chim, 21), "BOOLEAN")
@@ -342,7 +348,7 @@ def build():
     copy_from(g_plan, ["Window Density", "Window Size", "Shutter Chance", "Shutter Color"], "Windows")
     copy_from(g_plan, ["Shop Chance", "Arch Chance"] + [n for n, _ in DOORS], "Doors & Shops")
     copy_from(g_roof, ["Pitch", "Overhang"], "Roof")
-    copy_from(g_plan, ["Gable Mix", "Slate Mix", "Chimney Chance", "Tile Color", "Slate Color"], "Roof")
+    copy_from(g_plan, ["Gable Mix", "Slate Mix", "Tower Chance", "Chimney Chance", "Tile Color", "Slate Color"], "Roof")
     copy_from(g_plan, [n for n, _, _ in PALETTE], "Palette")
 
     def wire(sub_tree, label, **fixed):

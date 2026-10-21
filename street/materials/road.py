@@ -91,7 +91,7 @@ def cobble():
     col = m.mixc(1.0, tint, mott.outputs[0], blend="MULTIPLY")
     # shoulder: where the dome turns down into the mortar the stone darkens (soft occlusion of the gap)
     shoulder = m.mapr(m.normal_z(), 0.35, 0.9, 0.0, 1.0)
-    col = m.mixc(shoulder.outputs[0], m.mixc(1.0, col, (0.35, 0.33, 0.30), blend="MULTIPLY"), col)
+    col = m.mixc(shoulder.outputs[0], m.mixc(1.0, col, (0.6, 0.5, 0.42), blend="MULTIPLY"), col)
     pores = m.noise(60.0, 2.0, 0.5)
     return m.bsdf(col, 0.72, m.bump(pores.outputs["Fac"], 0.12))
 

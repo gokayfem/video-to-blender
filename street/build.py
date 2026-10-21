@@ -119,10 +119,13 @@ def main():
         curve.hide_render = True
         street, mod = S.holder(f"{name} Street", curve, group, sc=sc)
         inspect.set_modifier_inputs(mod, {"Path": curve.name, **preset})
-        light = ROOT / "street" / "light.json"
-        S.light_world(sc=sc, **(json.loads(light.read_text()) if light.exists() else {}))
+        light = json.loads((ROOT / "street" / "light.json").read_text())
+        render_opts, post_opts = light.pop("render", {}), light.pop("post", None)
+        S.light_world(sc=sc, **light)
         camera_rig(sc, curve, street, mod, cfg["cam"])
-        S.render_setup(sc=sc)
+        S.render_setup(sc=sc, **render_opts)
+        if post_opts is not None:
+            S.post(sc=sc, **post_opts)
         sc.frame_set(1)
         st = inspect.evaluated_stats(street, sc)
         print(f"SCENE {name}: verts {st['verts']} faces {st['faces']} materials {len(st['materials'])} "

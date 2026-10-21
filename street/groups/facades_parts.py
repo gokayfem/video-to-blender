@@ -162,9 +162,11 @@ def boxes():
     global _BOXES
     if _BOXES is not None:
         return _BOXES
-    g = Graph("SS House Boxes", description="One shaped piece per point: a box, a roof prism, a cylinder or an "
-                                            "arch ring, at Center with Size and Rotation (house-local). Writes "
-                                            "ss_color, ss_size, ss_rand; the unit shape carries ss_unit")
+    g = Graph("SS House Boxes", description="One shaped piece per point: a chamfered box, a roof prism, a "
+                                            "cylinder or an arch ring, at Center with Size and Rotation "
+                                            "(house-local). Boxes get a small chamfer of fixed size on every edge "
+                                            "(the toy-like bevel). Writes ss_color, ss_size, ss_rand; the unit "
+                                            "shape carries ss_unit")
     pts = g.input("Points", "GEOMETRY", desc="One point per piece; house attributes ride along")
     sel = g.input("Selection", "BOOL", True, desc="Which points get a piece")
     center = g.input("Center", "VECTOR", (0.0, 0.0, 0.0), subtype="TRANSLATION", desc="Piece centre (field)")
@@ -174,8 +176,19 @@ def boxes():
     shape = g.input("Shape", "INT", 0, min=0, max=3,
                     desc="0 box, 1 prism (ridge along X on top), 2 cylinder along Y, 3 half arch ring in XZ")
     mat = g.input("Material", "MATERIAL", desc="Material of the pieces")
-    with g.frame("Unit shapes (1 H cube bounds); ss_unit = position + 0.5 gives materials local coordinates"):
+    with g.frame("Chamfered unit box: hull of three cubes each inset on two axes; each corner remembers its "
+                 "octant (p_s) and which axes are inset (p_in)"):
         cube = g.node("GeometryNodeMeshCube", Size=(1.0, 1.0, 1.0))["Mesh"]
+        hj = g.node("GeometryNodeJoinGeometry")
+        for sc in ((1.0, 0.8, 0.8), (0.8, 1.0, 0.8), (0.8, 0.8, 1.0)):
+            g.connect(g.node("GeometryNodeTransform", Geometry=cube, Scale=sc)["Geometry"], hj.i("Geometry"))
+        rbox = g.node("GeometryNodeConvexHull", Geometry=hj["Geometry"])["Convex Hull"]
+        hp = g.node("GeometryNodeInputPosition")["Position"]
+        hx, hy, hz = xyz(g, g.vmath("ABSOLUTE", hp))
+        rbox = store(g, rbox, "p_s", g.vmath("SIGN", hp), "FLOAT_VECTOR")
+        rbox = store(g, rbox, "p_in", vec(g, cmp(g, hx, 0.49, "LESS_THAN"), cmp(g, hy, 0.49, "LESS_THAN"),
+                                         cmp(g, hz, 0.49, "LESS_THAN")), "FLOAT_VECTOR")
+    with g.frame("Other unit shapes (1 H cube bounds); ss_unit = position + 0.5 gives materials local coordinates"):
         pz = xyz(g, g.node("GeometryNodeInputPosition")["Position"])
         top = cmp(g, pz[2], 0.0)
         ridge = g.node("GeometryNodeSetPosition", Geometry=cube, Selection=top, Position=vec(g, pz[0], 0.0, pz[2]))
@@ -189,7 +202,7 @@ def boxes():
                       Height=0.14)["Curve"]
         ring = g.node("GeometryNodeCurveToMesh", Curve=arc, **{"Profile Curve": prof, "Fill Caps": True})["Mesh"]
         ring = g.node("GeometryNodeTransform", Geometry=ring, Rotation=(math.pi / 2, 0.0, 0.0))["Geometry"]
-        unit = iswitch(g, shape, [cube, prism, cyl, ring], "GEOMETRY")
+        unit = iswitch(g, shape, [rbox, prism, cyl, ring], "GEOMETRY")
         pos = g.node("GeometryNodeInputPosition")["Position"]
         unit = store(g, unit, "ss_unit", g.vmath("ADD", pos, (0.5, 0.5, 0.5)), "FLOAT_VECTOR")
         unit = g.node("GeometryNodeSetMaterial", Geometry=unit, Material=mat)["Geometry"]
@@ -199,9 +212,23 @@ def boxes():
         p = store(g, p, "ss_size", size, "FLOAT_VECTOR")
         idx = g.node("GeometryNodeInputIndex")["Index"]
         p = store(g, p, "ss_rand", rnd(g, 0.0, 1.0, idx, attr(g, "ss_house", "INT")), "FLOAT")
+        p = store(g, p, "p_center", center, "FLOAT_VECTOR")
+        p = store(g, p, "p_rot", rot, "QUATERNION")
         inst = g.node("GeometryNodeInstanceOnPoints", Points=p, Selection=sel, Instance=unit, Rotation=rot,
                       Scale=size)["Instances"]
-        for pat in ("h_*", "w_*", "t_*"):
+        inst = g.node("GeometryNodeRealizeInstances", Geometry=inst)["Geometry"]
+    with g.frame("Boxes: rebuild each corner at full size minus a fixed chamfer (not scaled with the piece)"):
+        sz = attr(g, "ss_size", "FLOAT_VECTOR")
+        sx_, sy_, sz_ = xyz(g, sz)
+        ch = g.math("MINIMUM", g.math("MAXIMUM", mul(g, mn(g, mn(g, sx_, sy_), sz_), 0.22), 0.003), 0.03)
+        ps = attr(g, "p_s", "FLOAT_VECTOR")
+        loc = g.vmath("SUBTRACT", g.vmath("MULTIPLY", ps, g.vmath("SCALE", sz, scale=0.5)),
+                      g.vmath("SCALE", g.vmath("MULTIPLY", attr(g, "p_in", "FLOAT_VECTOR"), ps), scale=ch))
+        new = g.vmath("ADD", attr(g, "p_center", "FLOAT_VECTOR"),
+                      g.node("FunctionNodeRotateVector", Vector=loc, Rotation=attr(g, "p_rot", "QUATERNION"))["Vector"])
+        inst = g.node("GeometryNodeSetPosition", Geometry=inst, Selection=cmp(g, shape, 0.5, "LESS_THAN"),
+                      Position=new)["Geometry"]
+        for pat in ("h_*", "w_*", "t_*", "p_*"):
             inst = g.node("GeometryNodeRemoveAttribute", **{"Pattern Mode": "Wildcard"}, Geometry=inst,
                           Name=pat)["Geometry"]
     g.output("Instances", "GEOMETRY", inst)
@@ -275,8 +302,7 @@ def window():
         rz = iswitch(g, rq, [cz, cz, add(g, add(g, cz, hh), cs / 2), sub(g, sub(g, cz, hh), cs / 2)])
         rsx = iswitch(g, rq, [cs, cs, add(g, ww, 2 * cs), add(g, ww, 2 * cs)])
         rsz = iswitch(g, rq, [add(g, wh, 2 * cs), add(g, wh, 2 * cs), cs, cs])
-        pale = g.vmath("ADD", g.vmath("SCALE", attr(g, "h_color", "FLOAT_COLOR"), scale=0.55),
-                       g.vmath("SCALE", FRAME_COLOR[:3], scale=0.45))
+        pale = g.vmath("SCALE", attr(g, "h_color", "FLOAT_COLOR"), scale=1.22)
         surround = piece(g, rp, vec(g, rx, add(g, cy, 0.02), rz), vec(g, rsx, 0.07, rsz), pale, "plaster")
     with g.frame("Shutters: two louvred leaves folded back against the wall"):
         spts, sq = dup(g, pts, sw(g, attr(g, "w_shutter", "BOOLEAN"), 0, 2, "INT"))
@@ -318,7 +344,7 @@ def body():
                                            "them, and a stone plinth either side of the door")
     houses = g.input("Houses", "GEOMETRY", desc="House points with the plan attributes (SS House Plan)")
     tcol = g.input("Timber Color", "COLOR", fm.hexc("#4A2E1C"), desc="Colour of beams, joist ends and corbels")
-    bw = g.input("Beam Width", "FLOAT", 0.16, min=0.04, max=0.4, subtype="DISTANCE",
+    bw = g.input("Beam Width", "FLOAT", 0.12, min=0.04, max=0.4, subtype="DISTANCE",
                  desc="Thickness of the jetty beams and corbels")
     with g.frame("Wall blocks: one plaster box per storey, each jettied further toward the street"):
         fl, k = dup(g, houses, attr(g, "h_storeys", "INT"))
@@ -334,39 +360,37 @@ def body():
         k1 = add(g, k, 1.0)
         z = floor_base(g, h, k1)
         y = mul(g, k1, h.jetty)
-        beams = piece(g, bm, vec(g, 0.0, sub(g, y, 0.06), z),
-                      vec(g, add(g, h.width, 0.05), 0.24, mul(g, bw, 1.3)), tcol, "timber")
-        top = piece(g, houses, vec(g, 0.0, sub(g, top_y(g, h), 0.06), sub(g, top_z(g, h), 0.05)),
-                    vec(g, add(g, h.width, 0.05), 0.24, bw), tcol, "timber")
-    with g.frame("Joist ends poking out under each jetty"):
-        nj = mx(g, g.math("ROUND", div(g, attr(g, "h_width"), 0.62)), 2.0)
+        timbered = cmp(g, h.timber, 0.5)
+        beams = piece(g, bm, vec(g, 0.0, sub(g, y, 0.07), z),
+                      vec(g, add(g, h.width, 0.04), 0.18, mul(g, bw, 1.2)), tcol, "timber", sel=timbered)
+        top = piece(g, houses, vec(g, 0.0, sub(g, top_y(g, h), 0.07), sub(g, top_z(g, h), 0.05)),
+                    vec(g, add(g, h.width, 0.04), 0.18, bw), tcol, "timber", sel=timbered)
+    with g.frame("Joist ends: short stubs under each jetty (jettied houses only)"):
+        nj = mul(g, mx(g, g.math("ROUND", div(g, attr(g, "h_width"), 0.9)), 2.0), cmp(g, attr(g, "h_jetty"), 0.05))
         jp, q = dup(g, houses, mul(g, sub(g, attr(g, "h_storeys", "INT"), 1.0), nj))
         h = House(g)
-        nj2 = mx(g, g.math("ROUND", div(g, h.width, 0.62)), 2.0)
+        nj2 = mx(g, g.math("ROUND", div(g, h.width, 0.9)), 2.0)
         kk = add(g, g.math("FLOOR", div(g, q, nj2)), 1.0)
         jj = g.math("FLOORED_MODULO", q, nj2)
         jx = sub(g, mul(g, div(g, add(g, jj, 0.5), nj2), h.width), half(g, h.width))
         y0 = mul(g, sub(g, kk, 1.0), h.jetty)
-        y1 = add(g, mul(g, kk, h.jetty), 0.02)
-        joists = piece(g, jp, vec(g, jx, half(g, add(g, y0, y1)), sub(g, floor_base(g, h, kk), 0.17)),
-                       vec(g, 0.1, sub(g, y1, y0), 0.11), tcol, "timber")
-    with g.frame("Carved corbels: angled struts from the lower wall up under each jetty, at posts and corners"):
-        nc = add(g, attr(g, "h_cols", "INT"), 1.0)
+        y1 = mul(g, kk, h.jetty)
+        joists = piece(g, jp, vec(g, jx, half(g, add(g, y0, y1)), sub(g, floor_base(g, h, kk), 0.15)),
+                       vec(g, 0.09, sub(g, y1, y0), 0.09), tcol, "timber")
+    with g.frame("Carved corbels: angled struts under each jetty at the two party walls (jettied houses)"):
+        nc = mul(g, 2.0, cmp(g, attr(g, "h_jetty"), 0.05))
         cp, q = dup(g, houses, mul(g, sub(g, attr(g, "h_storeys", "INT"), 1.0), nc))
         h = House(g)
-        nc2 = add(g, h.cols, 1.0)
-        kk = add(g, g.math("FLOOR", div(g, q, nc2)), 1.0)
-        jj = g.math("FLOORED_MODULO", q, nc2)
-        lim = sub(g, half(g, h.width), 0.1)
-        cx = g.math("MINIMUM", g.math("MAXIMUM", sub(g, mul(g, div(g, jj, h.cols), h.width), half(g, h.width)),
-                                      neg(g, lim)), lim)
+        kk = add(g, g.math("FLOOR", div(g, q, 2.0)), 1.0)
+        jj = g.math("FLOORED_MODULO", q, 2.0)
+        cx = mul(g, sub(g, mul(g, jj, 2.0), 1.0), sub(g, half(g, h.width), 0.1))
         zb = floor_base(g, h, kk)
         cy, cz, cl, crot = strut_yz(g, mul(g, sub(g, kk, 1.0), h.jetty), sub(g, zb, 0.5),
                                     sub(g, mul(g, kk, h.jetty), 0.06), sub(g, zb, 0.16))
-        corb = piece(g, cp, vec(g, cx, add(g, cy, 0.04), cz), vec(g, mul(g, bw, 1.1), 0.14, add(g, cl, 0.08)),
+        corb = piece(g, cp, vec(g, cx, add(g, cy, 0.03), cz), vec(g, bw, 0.12, add(g, cl, 0.06)),
                      tcol, "timber", rot=crot)
         pad = piece(g, cp, vec(g, cx, add(g, mul(g, sub(g, kk, 1.0), h.jetty), 0.03), sub(g, zb, 0.6)),
-                    vec(g, mul(g, bw, 1.25), 0.1, 0.16), tcol, "timber")
+                    vec(g, mul(g, bw, 1.15), 0.08, 0.14), tcol, "timber")
     with g.frame("Stone plinth (houses with h_plinth): two runs, either side of the door"):
         pp, q = dup(g, houses, sw(g, attr(g, "h_plinth", "BOOLEAN"), 0, 2, "INT"))
         h = House(g)
@@ -392,7 +416,7 @@ def timber():
                                              "windows")
     houses = g.input("Houses", "GEOMETRY", desc="House points with the plan attributes")
     tcol = g.input("Timber Color", "COLOR", fm.hexc("#4A2E1C"), desc="Colour of the frame timbers")
-    bw = g.input("Beam Width", "FLOAT", 0.16, min=0.04, max=0.4, subtype="DISTANCE",
+    bw = g.input("Beam Width", "FLOAT", 0.12, min=0.04, max=0.4, subtype="DISTANCE",
                  desc="Width of posts, rails and braces")
     with g.frame("Timbered storeys: one point per storey of every timbered house"):
         h = House(g)
@@ -425,9 +449,8 @@ def timber():
         x = sub(g, mul(g, div(g, add(g, q, 1.0), h.cols), h.width), half(g, h.width))
         mids = piece(g, mp, vec(g, x, add(g, yf, 0.01), half(g, add(g, z0, z1))),
                      vec(g, mul(g, bw, 0.9), 0.08, sub(g, z1, z0)), tcol, "timber")
-    with g.frame("Upper storeys: sill rail under the windows, and a head rail over them in pattern 1"):
-        p1 = cmp(g, attr(g, "h_timber", "INT"), 1.0, "EQUAL")
-        rp, q = dup(g, fl, sw(g, upper, 0, sw(g, p1, 1, 2, "INT"), "INT"))
+    with g.frame("Upper storeys: one sill rail under the windows"):
+        rp, q = dup(g, fl, sw(g, upper, 0, 1, "INT"))
         h = House(g)
         yf = attr(g, "t_y")
         z = sw(g, cmp(g, q, 0.5), sub(g, attr(g, "t_win_lo"), 0.1), add(g, attr(g, "t_win_hi"), 0.09))
@@ -487,7 +510,7 @@ def windows():
         gp, q = dup(g, houses, attr(g, "h_gwin", "INT"))
         h = House(g)
         x = add(g, h.span_c, mul(g, sub(g, add(g, q, 0.5), half(g, h.gwin)), div(g, h.span_len, h.gwin)))
-        z = add(g, h.level, 1.12)
+        z = add(g, h.level, mx(g, 1.05, add(g, 0.55, half(g, h.gwin_h))))
         gp = window_points(g, gp, vec(g, x, 0.0, z), vec(g, h.gwin_w, 0.0, h.gwin_h),
                            g.math("ROUND", mx(g, div(g, h.gwin_w, 0.34), 2.0)), h.shutter, True)
         gp = store(g, gp, "w_floor", 0, "INT")
@@ -563,7 +586,7 @@ def doors():
         sp, _ = dup(g, houses, sw(g, attr(g, "h_shop", "BOOLEAN"), 0, 1, "INT"))
         h = House(g)
         sww = mn(g, mul(g, h.span_len, 0.92), 2.7)
-        zb = add(g, h.level, 0.5)
+        zb = add(g, h.level, 0.35)
         zt = sub(g, h.ground_h, 0.42)
         sp = window_points(g, sp, vec(g, h.span_c, 0.0, half(g, add(g, zb, zt))), vec(g, sww, 0.0, sub(g, zt, zb)),
                            g.math("ROUND", mx(g, div(g, sww, 0.42), 2.0)), False)
@@ -607,11 +630,14 @@ def roof():
     houses = g.input("Houses", "GEOMETRY", desc="House points with the plan attributes")
     pitch = g.input("Pitch", "FLOAT", math.radians(55), min=math.radians(20), max=math.radians(70),
                     subtype="ANGLE", desc="Roof slope; storybook roofs are steep")
-    over = g.input("Overhang", "FLOAT", 0.5, min=0.0, max=1.2, subtype="DISTANCE",
+    over = g.input("Overhang", "FLOAT", 0.3, min=0.0, max=1.2, subtype="DISTANCE",
                    desc="How far the eaves (and gable verges) reach past the walls")
     tcol = g.input("Timber Color", "COLOR", fm.hexc("#4A2E1C"), desc="Gable timbers")
-    bw = g.input("Beam Width", "FLOAT", 0.16, min=0.04, max=0.4, subtype="DISTANCE", desc="Gable timber width")
+    bw = g.input("Beam Width", "FLOAT", 0.12, min=0.04, max=0.4, subtype="DISTANCE", desc="Gable timber width")
     thick = 0.13
+    with g.frame("Per-house pitch: towers (h_tower) get a steep spire-like roof"):
+        tower_pitch = g.math("MAXIMUM", pitch, math.radians(70))
+        pitch = sw(g, attr(g, "h_tower", "BOOLEAN"), pitch, tower_pitch)
     with g.frame("Roof frame: wall top, ridge height, half-span; eaves roofs span the depth, gables the width"):
         h = House(g)
         tanp = g.math("TANGENT", pitch)
@@ -643,7 +669,7 @@ def roof():
         ux = sw(g, gable, 0.0, sgn)
         uy = sw(g, gable, sgn, 0.0)
         # ridge-line midpoint: eaves roofs at yc; gables run from behind the house to the front verge
-        y_front = add(g, yt, add(g, over, 0.12))
+        y_front = add(g, yt, add(g, over, 0.05))
         y_back = sub(g, neg(g, h.depth), 0.05)
         rmid_y = sw(g, gable, yc, half(g, add(g, y_front, y_back)))
         rz = add(g, zt, rise)
@@ -671,7 +697,7 @@ def roof():
         gable = h.gable
         half_span = sw(g, gable, half(g, add(g, yt, h.depth)), half(g, h.width))
         rz = add(g, zt, mul(g, half_span, g.math("TANGENT", pitch)))
-        y_front = add(g, yt, add(g, over, 0.12))
+        y_front = add(g, yt, add(g, over, 0.05))
         y_back = sub(g, neg(g, h.depth), 0.05)
         cy = sw(g, gable, half(g, sub(g, yt, h.depth)), half(g, add(g, y_front, y_back)))
         size = sw(g, gable, vec(g, add(g, h.width, 0.24), 0.18, 0.14), vec(g, 0.18, sub(g, y_front, y_back), 0.14),

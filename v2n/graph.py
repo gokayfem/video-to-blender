@@ -25,7 +25,7 @@ SOCKET_TYPES = {
     "ROTATION": "NodeSocketRotation", "SHADER": "NodeSocketShader", "MENU": "NodeSocketMenu",
     "MATRIX": "NodeSocketMatrix",
 }
-TREE_TYPES = {"GEOMETRY": "GeometryNodeTree", "SHADER": "ShaderNodeTree"}
+TREE_TYPES = {"GEOMETRY": "GeometryNodeTree", "SHADER": "ShaderNodeTree", "COMPOSITOR": "CompositorNodeTree"}
 
 
 def _enabled(sockets):

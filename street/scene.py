@@ -79,7 +79,7 @@ def light_world(sun_elev=30.0, sun_azim=145.0, strength=4.0, sun_color="#FFE2BC"
     ramp = nt.nodes.new("ShaderNodeValToRGB")
     nt.links.new(grad.outputs["Generated"], sep.inputs[0])
     mr = nt.nodes.new("ShaderNodeMapRange")
-    mr.inputs["From Min"].default_value, mr.inputs["From Max"].default_value = -0.05, 0.7
+    mr.inputs["From Min"].default_value, mr.inputs["From Max"].default_value = 0.0, 0.3
     nt.links.new(sep.outputs["Z"], mr.inputs["Value"])
     nt.links.new(mr.outputs[0], ramp.inputs[0])
     ramp.color_ramp.elements[0].position = 0.0
@@ -112,13 +112,64 @@ def camera(name="Camera", lens=24.0, loc=(0, -8, 1.6), target=(0, 10, 1.2)):
     return ob, t
 
 
-def render_setup(width=1280, height=704, samples=16, engine="BLENDER_EEVEE", sc=None):
+def render_setup(width=1280, height=704, samples=16, engine="BLENDER_EEVEE", sc=None, look="None",
+                 exposure=0.0, raytrace=True, glare=0.0):
+    """EEVEE with ray-traced reflections/fast GI (warm bounce light into the shade), AgX, optional glare."""
     sc = sc or bpy.context.scene
     sc.render.engine = engine
     sc.render.resolution_x, sc.render.resolution_y = width, height
     sc.render.resolution_percentage = 100
-    if hasattr(sc, "eevee"):
-        sc.eevee.taa_render_samples = samples
+    ee = sc.eevee
+    ee.taa_render_samples = samples
+    for attr, val in (("use_raytracing", raytrace), ("use_shadows", True), ("shadow_ray_count", 2),
+                      ("shadow_step_count", 8), ("fast_gi_method", "GLOBAL_ILLUMINATION")):
+        if hasattr(ee, attr):
+            setattr(ee, attr, val)
+    if hasattr(ee, "ray_tracing_options"):
+        ee.ray_tracing_options.use_denoise = True
     sc.view_settings.view_transform = "AgX"
+    sc.view_settings.look = look if look == "None" else f"AgX - {look}"
+    sc.view_settings.exposure = exposure
     sc.render.image_settings.file_format = "PNG"
     return sc
+
+
+def post(sc=None, haze_color="#E8D2BE", haze_start=6.0, haze_depth=150.0, haze_amount=0.8, glare=0.25):
+    """Compositor 'SS Post': distance haze from the Mist pass (the reference's warm glow down the street, without
+    a world volume that would swallow the sun) and a soft fog glow on bright lanterns and highlights."""
+    from v2n.graph import Graph
+    sc = sc or bpy.context.scene
+    sc.view_layers[0].use_pass_mist = True
+    w = sc.world
+    w.mist_settings.start, w.mist_settings.depth, w.mist_settings.falloff = haze_start, haze_depth, "QUADRATIC"
+    g = Graph("SS Post", kind="COMPOSITOR", description="Distance haze from the mist pass, then soft glare")
+    rl = g.node("CompositorNodeRLayers")
+    rl.b.scene = sc
+    with g.frame("Haze: mix toward the warm horizon colour by mist depth"):
+        # mist is exactly 1 on the sky (no geometry); keep the sky's own gradient there
+        geo = g.math("LESS_THAN", rl["Mist"], 0.9999, label="Is Geometry")
+        amt = g.math("MULTIPLY", g.math("MULTIPLY", rl["Mist"], haze_amount), geo, label="Haze Amount")
+        mix = g.node("ShaderNodeMix", props={"data_type": "RGBA", "clamp_factor": True})
+        g.connect(amt, mix.i("Factor"))
+        g.connect(rl["Image"], mix.i("A#1") if False else [s for s in mix.b.inputs if s.enabled and s.name == "A"][0])
+        g.connect((*srgb(haze_color), 1.0), [s for s in mix.b.inputs if s.enabled and s.name == "B"][0])
+    out_img = [s for s in mix.b.outputs if s.enabled][0]
+    if glare > 0:
+        with g.frame("Soft glow on bright lanterns and highlights"):
+            gl = g.node("CompositorNodeGlare")
+            for k, v in (("glare_type", "FOG_GLOW"), ("quality", "MEDIUM")):
+                if hasattr(gl.b, k):
+                    setattr(gl.b, k, v)
+            g.connect(out_img, gl.i("Image"))
+            for name, v in (("Strength", glare), ("Threshold", 0.9), ("Mix", -1 + glare)):
+                try:
+                    g.connect(v, gl.i(name))
+                except KeyError:
+                    pass
+            out_img = gl["Image"]
+    g.output("Image", "COLOR", out_img)
+    g.finish()
+    sc.compositing_node_group = g.nt
+    if hasattr(sc.render, "use_compositing"):
+        sc.render.use_compositing = True
+    return g.nt

@@ -147,8 +147,8 @@ def build_cobbles(bend, shape):
         lo = g.math("MINIMUM", d0, d1)
         hi = g.math("MAXIMUM", d0, d1)
         shift = g.math("MULTIPLY", rand(g, 0.0, 1.0, row, seed, 1, "course shift"), cell_a)
-        jit_a = g.math("MULTIPLY", g.math("MULTIPLY", jit, cell_a), 0.18)
-        jit_l = g.math("MULTIPLY", g.math("MULTIPLY", jit, cell_l), 0.18)
+        jit_a = g.math("MULTIPLY", g.math("MULTIPLY", jit, cell_a), 0.25)
+        jit_l = g.math("MULTIPLY", g.math("MULTIPLY", jit, cell_l), 0.25)
         s = g.math("ADD", g.math("MULTIPLY_ADD", row, cell_l, g.math("MULTIPLY", cell_l, 0.5)),
                    g.math("MULTIPLY", rand(g, -1.0, 1.0, ident, seed, 2), jit_l), label="s")
         d = g.math("ADD", g.math("ADD", g.math("MULTIPLY_ADD", g.math("SUBTRACT", col, 1.0), cell_a, lo), shift),
@@ -226,7 +226,7 @@ def build_curbs(bend, block, mat):
                                           "block slightly set, tilted and tinted on its own")
     curve = g.input("Curve", "GEOMETRY", desc="Street path curve")
     seed = g.input("Seed", "INT", 0, desc="Random seed")
-    sw = g.input("Street Width", "FLOAT", 4.0, min=1, max=20, subtype="DISTANCE", desc="Curb-to-curb width")
+    sw = g.input("Street Width", "FLOAT", 3.0, min=1, max=20, subtype="DISTANCE", desc="Curb-to-curb width")
     cw = g.input("Curb Width", "FLOAT", 0.2, min=0.02, max=1, subtype="DISTANCE", desc="Curb stone width")
     ch = g.input("Curb Height", "FLOAT", 0.12, min=0, max=0.5, subtype="DISTANCE", desc="Curb top above the road")
     bl = g.input("Block Length", "FLOAT", 0.7, min=0.1, max=3, subtype="DISTANCE", desc="Curb block length")
@@ -284,7 +284,7 @@ def build_tuft():
         p = g.separate(g.node("GeometryNodeInputPosition"))
         t = g.math("ADD", p["Y"], 0.5, label="t (root to tip)")
         x = g.math("MULTIPLY", p["X"], g.math("MULTIPLY", g.math("SUBTRACT", 1.0, g.math("MULTIPLY", t, 0.9)),
-                                               0.2))
+                                               0.12))
         y = g.math("MULTIPLY", g.math("MULTIPLY", t, t), 0.3)
         blade = g.node("GeometryNodeSetPosition", Geometry=grid["Mesh"], Position=g.combine(x, y, t))
         tip = g.node("GeometryNodeStoreNamedAttribute", props={"data_type": "FLOAT", "domain": "POINT"},
@@ -319,12 +319,12 @@ def build_grass(tuft, grass_mat, flower_mat):
         euler = g.combine(rand(g, -0.15, 0.15, idx, seed, 21), rand(g, -0.15, 0.15, idx, seed, 22),
                           rand(g, 0.0, 6.283, idx, seed, 23))
         sz = g.math("MULTIPLY", height, rand(g, 0.55, 1.35, idx, seed, 24))
-        shape = g.group(tuft, Blades=7, Seed=seed)
+        shape = g.group(tuft, Blades=9, Seed=seed)
         shape_m = g.node("GeometryNodeSetMaterial", Geometry=shape, Material=grass_mat)
         inst = g.node("GeometryNodeInstanceOnPoints", Points=pts["Points"], Instance=shape_m, Rotation=euler,
                       Scale=sz)
         r1 = rand(g, 0.0, 1.0, idx, seed, 25, "ss_rand")
-        yellow = g.mix(rand(g, 0.0, 1.0, idx, seed, 26), color, g.vmath("MULTIPLY", color, (1.5, 1.25, 0.8)),
+        yellow = g.mix(rand(g, 0.0, 1.0, idx, seed, 26), color, g.vmath("MULTIPLY", color, (1.25, 1.12, 0.85)),
                        data_type="RGBA")
         tint = g.vmath("SCALE", yellow, scale=g.map_range(r1, 0.0, 1.0, 0.75, 1.2))
         tufts = g.node("GeometryNodeStoreNamedAttribute", props={"data_type": "FLOAT_COLOR", "domain": "INSTANCE"},
@@ -363,25 +363,25 @@ def build():
                                 "tufts and small white flowers up to the house fronts")
     curve = g.input("Curve", "GEOMETRY", desc="Street path curve")
     seed = g.input("Seed", "INT", 0, desc="Changes every stone, block and tuft")
-    sw = g.input("Street Width", "FLOAT", 4.0, min=1, max=20, subtype="DISTANCE", panel="Street",
+    sw = g.input("Street Width", "FLOAT", 3.0, min=1, max=20, subtype="DISTANCE", panel="Street",
                  desc="Curb-to-curb width")
-    cw = g.input("Curb Width", "FLOAT", 0.2, min=0.02, max=1, subtype="DISTANCE", panel="Street",
+    cw = g.input("Curb Width", "FLOAT", 0.25, min=0.02, max=1, subtype="DISTANCE", panel="Street",
                  desc="Width of the curb stones")
-    ch = g.input("Curb Height", "FLOAT", 0.12, min=0, max=0.5, subtype="DISTANCE", panel="Street",
+    ch = g.input("Curb Height", "FLOAT", 0.07, min=0, max=0.5, subtype="DISTANCE", panel="Street",
                  desc="Height of the curb above the road")
     vw = g.input("Verge Width", "FLOAT", 0.8, min=0, max=4, subtype="DISTANCE", panel="Street",
                  desc="Paved strip and grass between the curb and the house fronts")
-    size = g.input("Stone Size", "FLOAT", 0.28, min=0.05, max=1, subtype="DISTANCE", panel="Cobbles",
+    size = g.input("Stone Size", "FLOAT", 0.25, min=0.05, max=1, subtype="DISTANCE", panel="Cobbles",
                    desc="Typical cobble width across the street. Smaller stones = more instances")
-    elong = g.input("Elongation", "FLOAT", 1.3, min=0.5, max=2.5, panel="Cobbles",
+    elong = g.input("Elongation", "FLOAT", 1.2, min=0.5, max=2.5, panel="Cobbles",
                     desc="Cobble width across the street divided by its length along it")
-    var = g.input("Size Variation", "FLOAT", 0.25, min=0, max=0.6, subtype="FACTOR", panel="Cobbles",
+    var = g.input("Size Variation", "FLOAT", 0.35, min=0, max=0.6, subtype="FACTOR", panel="Cobbles",
                   desc="Random spread of cobble sizes")
     gap = g.input("Gap", "FLOAT", 0.02, min=0, max=0.2, subtype="DISTANCE", panel="Cobbles",
                   desc="Dark mortar gap between cobbles")
-    jit = g.input("Jitter", "FLOAT", 0.5, min=0, max=1, subtype="FACTOR", panel="Cobbles",
+    jit = g.input("Jitter", "FLOAT", 0.75, min=0, max=1, subtype="FACTOR", panel="Cobbles",
                   desc="How loosely cobbles sit in their courses")
-    wobble = g.input("Irregularity", "FLOAT", 0.5, min=0, max=1, subtype="FACTOR", panel="Cobbles",
+    wobble = g.input("Irregularity", "FLOAT", 0.6, min=0, max=1, subtype="FACTOR", panel="Cobbles",
                      desc="Lumpiness of each cobble's outline")
     dome = g.input("Dome Height", "FLOAT", 0.045, min=0, max=0.3, subtype="DISTANCE", panel="Cobbles",
                    desc="Height of a cobble's crown above the mortar")
@@ -389,29 +389,29 @@ def build():
                         desc="Flat-topped setts (0) to round pebbles (1)")
     detail = g.input("Detail", "INT", 7, min=3, max=16, panel="Cobbles",
                      desc="Mesh vertices across each cobble (the main mesh budget)")
-    bl = g.input("Block Length", "FLOAT", 0.7, min=0.1, max=3, subtype="DISTANCE", panel="Curb",
+    bl = g.input("Block Length", "FLOAT", 0.8, min=0.1, max=3, subtype="DISTANCE", panel="Curb",
                  desc="Length of one curb stone")
     cvar = g.input("Block Variation", "FLOAT", 0.5, min=0, max=1, subtype="FACTOR", panel="Curb",
                    desc="How unevenly curb stones are set and tinted")
-    gutter = g.input("Gutter Width", "FLOAT", 0.35, min=0, max=2, subtype="DISTANCE", panel="Verge",
+    gutter = g.input("Gutter Width", "FLOAT", 0.33, min=0, max=2, subtype="DISTANCE", panel="Verge",
                      desc="Grass strip on the road side of each curb")
-    paving = g.input("Paving Width", "FLOAT", 0.55, min=0, max=4, subtype="DISTANCE", panel="Verge",
+    paving = g.input("Paving Width", "FLOAT", 0.45, min=0, max=4, subtype="DISTANCE", panel="Verge",
                      desc="Cobbled strip behind each curb; the rest of the verge is grass")
-    gdens = g.input("Grass Density", "FLOAT", 70.0, min=0, max=400, panel="Verge",
+    gdens = g.input("Grass Density", "FLOAT", 110.0, min=0, max=400, panel="Verge",
                     desc="Grass tufts per square unit on the gutters and verges")
-    gheight = g.input("Grass Height", "FLOAT", 0.15, min=0, max=1, subtype="DISTANCE", panel="Verge",
+    gheight = g.input("Grass Height", "FLOAT", 0.12, min=0, max=1, subtype="DISTANCE", panel="Verge",
                       desc="Typical tuft height")
-    fdens = g.input("Flower Density", "FLOAT", 3.0, min=0, max=100, panel="Verge",
+    fdens = g.input("Flower Density", "FLOAT", 8.0, min=0, max=100, panel="Verge",
                     desc="Small white flowers per square unit in the grass")
     weeds = g.input("Weed Density", "FLOAT", 0.4, min=0, max=20, panel="Verge",
                     desc="Small tufts per square unit growing between the road cobbles")
-    stone_c = g.input("Stone Color", "COLOR", (0.26, 0.205, 0.17, 1), panel="Palette", desc="Cobble tint")
+    stone_c = g.input("Stone Color", "COLOR", (0.33, 0.255, 0.195, 1), panel="Palette", desc="Cobble tint")
     tintvar = g.input("Tint Variation", "FLOAT", 0.3, min=0, max=1, subtype="FACTOR", panel="Palette",
                       desc="Per-stone brightness and warmth spread")
-    mortar_c = g.input("Mortar Color", "COLOR", (0.075, 0.06, 0.042, 1), panel="Palette",
+    mortar_c = g.input("Mortar Color", "COLOR", (0.075, 0.052, 0.035, 1), panel="Palette",
                        desc="Mortar and dirt between the cobbles")
-    curb_c = g.input("Curb Color", "COLOR", (0.3, 0.285, 0.265, 1), panel="Palette", desc="Curb stone tint")
-    grass_c = g.input("Grass Color", "COLOR", (0.2, 0.2, 0.06, 1), panel="Palette", desc="Grass and turf tint")
+    curb_c = g.input("Curb Color", "COLOR", (0.42, 0.39, 0.36, 1), panel="Palette", desc="Curb stone tint")
+    grass_c = g.input("Grass Color", "COLOR", (0.14, 0.14, 0.055, 1), panel="Palette", desc="Grass and turf tint")
     flower_c = g.input("Flower Color", "COLOR", (0.85, 0.85, 0.8, 1), panel="Palette", desc="Verge flower tint")
 
     with g.frame("Cross-section: lateral offsets of every band (left side; the right side mirrors it)"):
@@ -446,7 +446,7 @@ def build():
                                                   "Material": m["cobble"]})
     with g.frame("Cobbles: the carriageway and the two paving strips"):
         c_road = g.group(cobbles, Inner=neg(road), Outer=road, Height=0.0, **stone_args)
-        small = g.math("MULTIPLY", size, 0.75, label="paving stone size")
+        small = g.math("MULTIPLY", size, 0.7, label="paving stone size")
         c_pl = g.group(cobbles, Inner=curb_out, Outer=pave_out, Height=pave_h, **stone_args)
         g.connect(small, c_pl.i("Stone Size"))
         g.connect(g.math("ADD", seed, 101.0), c_pl.i("Seed"))
