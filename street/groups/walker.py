@@ -30,13 +30,12 @@ NAME = "SS Walker"
 STANCE = 0.56          # fraction of the gait cycle each foot is planted (> 0.5: a walk with double support)
 TOE = 0.08             # toe pivot ahead of the boot's middle
 FOOT_X = 0.07          # lateral foot spacing from the centre line
-FOOT_H = 0.0           # boot soles on the curve (road may ask for a cobble-crown lift)
 STEP_LIFT = 0.085      # peak swing height of a boot
 HEEL_OFF = 0.8         # boot pitch (rad, heel up) at toe-off
 HIP = 0.2              # hip height
 HIP_X = 0.065          # hip half-spacing
 LEAN = 0.07            # forward lean of the upper body (rad)
-SWAY = 0.02            # lateral sway amplitude (gait rate)
+SWAY = 0.026           # lateral sway amplitude (gait rate)
 TWIST = 0.07           # shoulder twist (rad)
 ARM_SWING = 0.55       # arm swing amplitude (rad)
 NECK = 0.475           # collar height
@@ -200,12 +199,13 @@ def build_rig():
     start = g.input("Walk Start", "FLOAT", 10.0, subtype="DISTANCE", desc="Arc length at Time 0")
     speed = g.input("Walk Speed", "FLOAT", 0.9, desc="Walking speed in H per second")
     off = g.input("Walk Offset", "FLOAT", 0.0, subtype="DISTANCE", desc="Lateral offset from the centre line")
-    stride = g.input("Stride", "FLOAT", 0.6, min=0.05, subtype="DISTANCE", desc="Distance per gait cycle")
-    bob_a = g.input("Bob", "FLOAT", 0.025, min=0.0, subtype="DISTANCE", desc="Body bob amplitude")
-    flap_a = g.input("Flap Swing", "FLOAT", 0.13, min=0.0, subtype="ANGLE", desc="Ear flap bounce")
+    stride = g.input("Stride", "FLOAT", 0.652, min=0.05, subtype="DISTANCE", desc="Distance per gait cycle")
+    bob_a = g.input("Bob", "FLOAT", 0.024, min=0.0, subtype="DISTANCE", desc="Body bob amplitude")
+    flap_a = g.input("Flap Swing", "FLOAT", 0.022, min=0.0, subtype="ANGLE", desc="Ear flap bounce")
     flap_p = g.input("Flap Lag", "FLOAT", 0.3, min=0.05, max=3.0, desc="Ear flap spring period (s)")
     scarf_a = g.input("Scarf Swing", "FLOAT", 0.05, min=0.0, subtype="ANGLE", desc="Scarf and satchel swing")
     scale = g.input("Scale", "FLOAT", 1.0, min=0.01, desc="Walker scale")
+    lift_g = g.input("Ground Lift", "FLOAT", 0.03, subtype="DISTANCE", desc="Height of the soles above the curve")
 
     with g.frame("Distance walked s = Walk Start + Walk Speed * Time; phase = s / Stride"):
         s = g.math("MULTIPLY_ADD", speed, time, start)
@@ -221,7 +221,7 @@ def build_rig():
                      -1.0, label="arm swing (left forward +)")
         twist = g.math("MULTIPLY", arm, TWIST)
     with g.frame("Root: street point at s, heading from the curve tangent"):
-        root = g.group(pt, Curve=curve, Length=s, Offset=g.math("ADD", off, sway))
+        root = g.group(pt, Curve=curve, Length=s, Offset=g.math("ADD", off, sway), Height=lift_g)
         hip_z = g.math("MULTIPLY", g.math("ADD", HIP, bob), scale)
         hips = []
         for side in (1.0, -1.0):
@@ -233,7 +233,7 @@ def build_rig():
         for side, phase_off in ((1.0, 0.0), (-1.0, 0.5)):
             st = g.group(step, Phase=phase, Offset=phase_off, Stride=stride, Scale=scale)
             d = g.math("ADD", off, g.math("MULTIPLY", side * FOOT_X, scale))
-            h = g.math("ADD", st["Lift"], FOOT_H)
+            h = g.math("ADD", st["Lift"], lift_g)
             fp = g.group(pt, Curve=curve, Length=st["Length"], Offset=d, Height=h)
             pitch = g.node("FunctionNodeAxisAngleToRotation", Axis=(0, 1, 0), Angle=st["Pitch"])
             rot = g.node("FunctionNodeRotateRotation", props={"rotation_space": "LOCAL"},
@@ -295,8 +295,7 @@ def build_hood():
         z = g.math("ADD", qz, 0.675)
         hem = g.math("MULTIPLY_ADD", x, 0.15, 0.565)
         z = g.math("SMOOTH_MAX", z, hem, 0.03)
-        dome = set_pos(g, sphere(g, 64, 32), g.combine(x, y, z))
-        dome = smooth(g, dome, 1)
+        dome = smooth(g, set_pos(g, sphere(g, 96, 48), g.combine(x, y, z)))
     with g.frame("Teardrop pad: a 2D teardrop seen from behind, ray-projected (from behind, slightly above) onto the dome and puffed out"):
         sx, sy, sz = xyz(g, pos(g))
         a = g.math("MULTIPLY_ADD", sz, 0.5, 0.5, label="0 tip .. 1 top")
@@ -480,23 +479,33 @@ def build_satchel():
     return g.finish()
 
 
+def build_boot():
+    g = Graph("SS Walker Boot", description="Chunky rubber boot in its own frame, toe pivot at the origin: a "
+                                            "rounded box (superellipsoid) foot and a short shaft. Static: built "
+                                            "once, then only transformed by each leg")
+    color = g.input("Color", "COLOR", srgb(PAL["Boots"]), desc="Boot colour")
+    with g.frame("Foot: sphere pushed toward a box (|p|^0.55 per axis), toe pivot at the front of the sole"):
+        px, py, pz = xyz(g, pos(g))
+        box = [g.math("MULTIPLY", g.math("SIGN", c), g.math("POWER", g.math("ABSOLUTE", c), 0.55))
+               for c in (px, py, pz)]
+        foot = set_pos(g, sphere(g, 24, 12), g.combine(*box))
+        foot = xform(g, smooth(g, foot), t=(-TOE, 0.0, 0.0475), s=(0.09, 0.0575, 0.0475))
+    with g.frame("Shaft up to the leg"):
+        shaft = g.node("GeometryNodeMeshCylinder", Vertices=20, **{"Side Segments": 1, "Radius": 0.053,
+                                                                    "Depth": 0.13})
+        shaft = xform(g, smooth(g, shaft["Mesh"]), t=(-TOE - 0.025, 0.0, 0.12))
+    g.output("Geometry", "GEOMETRY", paint(g, join(g, foot, shaft), color, mats.rubber()))
+    return g.finish()
+
+
 def build_leg():
-    g = Graph("SS Walker Leg", description="One leg in world space: chunky boot at its foot transform (pivot at "
+    g = Graph("SS Walker Leg", description="One leg in world space: the (pre-built) boot moved to its foot transform (pivot at "
                                            "the toe) and a short teal leg tube from the boot shaft to the hip")
     hip = g.input("Hip", "VECTOR", (0, 0, 0.2), desc="Hip joint, world position")
     fpos = g.input("Foot Position", "VECTOR", (0, 0, 0), desc="Toe pivot on the ground, world position")
     frot = g.input("Foot Rotation", "ROTATION", desc="Boot orientation (street frame plus heel pitch)")
     scale = g.input("Scale", "FLOAT", 1.0, min=0.01, desc="Walker scale")
-    boot_c = g.input("Boot Color", "COLOR", srgb(PAL["Boots"]), desc="Boot colour")
-    rubber = mats.rubber()
-    with g.frame("Boot in its own frame: rounded foot box with the toe pivot at the origin, and a shaft"):
-        foot = g.node("GeometryNodeMeshCube", Size=(0.18, 0.115, 0.095), **{"Vertices X": 4, "Vertices Y": 3,
-                                                                           "Vertices Z": 3})
-        foot = xform(g, smooth(g, foot["Mesh"], 2), t=(-TOE, 0.0, 0.0475))
-        shaft = g.node("GeometryNodeMeshCylinder", Vertices=16, **{"Side Segments": 2, "Radius": 0.053,
-                                                                    "Depth": 0.13})
-        shaft = xform(g, smooth(g, shaft["Mesh"], 1), t=(-TOE - 0.025, 0.0, 0.12))
-        boot = paint(g, join(g, foot, shaft), boot_c, rubber)
+    boot = g.input("Boot", "GEOMETRY", desc="The boot in its own frame (SS Walker Boot), toe pivot at the origin")
     with g.frame("Place the boot: scale, foot rotation, foot position"):
         boot = xform(g, boot, t=fpos, r=frot, s=g.combine(scale, scale, scale))
     with g.frame("Leg: tube from the ankle (boot shaft top) to the hip"):
@@ -514,7 +523,7 @@ def build_leg():
 # ---- top group -----------------------------------------------------------------------------------------------
 def build():
     rig, hood, flap, tunic = build_rig(), build_hood(), build_flap(), build_tunic()
-    scarf, arm, satchel, leg = build_scarf(), build_arm(), build_satchel(), build_leg()
+    scarf, arm, satchel, leg, boot = build_scarf(), build_arm(), build_satchel(), build_leg(), build_boot()
     g = Graph(NAME, description="The hooded storybook walker, seen from behind, walking along the path curve at "
                                 "s = Walk Start + Walk Speed * Time with planted feet, body bob and sway, arm swing "
                                 "and springy ear flaps, scarf and satchel")
@@ -526,11 +535,13 @@ def build():
                     desc="Walking speed in H (walker heights) per second")
     off = g.input("Walk Offset", "FLOAT", 0.0, min=-3.0, max=3.0, subtype="DISTANCE", panel="Walk",
                   desc="Lateral offset d from the street centre line (+ left)")
-    stride = g.input("Stride", "FLOAT", 0.64, min=0.1, max=2.0, subtype="DISTANCE", panel="Walk",
+    stride = g.input("Stride", "FLOAT", 0.652, min=0.1, max=2.0, subtype="DISTANCE", panel="Walk",
                      desc="Distance walked per gait cycle (two steps); cadence = 2 * speed / stride")
-    bob = g.input("Bob", "FLOAT", 0.025, min=0.0, max=0.2, subtype="DISTANCE", panel="Walk",
+    bob = g.input("Bob", "FLOAT", 0.024, min=0.0, max=0.2, subtype="DISTANCE", panel="Walk",
                   desc="Body bob amplitude (twice per gait cycle)")
-    flap_a = g.input("Flap Swing", "FLOAT", 0.13, min=0.0, max=1.0, subtype="ANGLE", panel="Secondary",
+    lift_g = g.input("Ground Lift", "FLOAT", 0.03, min=-0.2, max=0.5, subtype="DISTANCE", panel="Walk",
+                     desc="Height of the boot soles above the path curve (sits them on the cobble crowns)")
+    flap_a = g.input("Flap Swing", "FLOAT", 0.022, min=0.0, max=1.0, subtype="ANGLE", panel="Secondary",
                      desc="Ear flap bounce angle (before the spring's resonance gain)")
     flap_p = g.input("Flap Lag", "FLOAT", 0.3, min=0.05, max=2.0, panel="Secondary",
                      desc="Ear flap spring period in seconds: longer is floppier and lags further behind the bob")
@@ -545,7 +556,7 @@ def build():
                     desc="Overall size of the walker (1 = 1 H tall); stride and speed stay as set")
 
     with g.frame("Rig: the skeleton's joint values at this Time"):
-        r = g.group(rig, Curve=curve, Time=time, Stride=stride, Bob=bob, Scale=scale,
+        r = g.group(rig, Curve=curve, Time=time, Stride=stride, Bob=bob, Scale=scale, **{"Ground Lift": lift_g},
                     **{"Walk Start": start, "Walk Speed": speed, "Walk Offset": off, "Flap Swing": flap_a,
                        "Flap Lag": flap_p, "Scarf Swing": scarf_a})
     with g.frame("Head: hood plus ear flaps at their roots, scaled about the neck by Hood Size"):
@@ -574,12 +585,11 @@ def build():
                       r=euler(g, 0.0, LEAN, r["Twist"]))
     with g.frame("Root: body frame to the street point at s (scale, heading, position)"):
         body = xform(g, upper, t=r["Root Position"], r=r["Root Rotation"], s=g.combine(scale, scale, scale))
-    with g.frame("Legs: boots at the feet's world transforms, tubes up to the hips"):
+    with g.frame("Legs: one static boot, moved to each foot's world transform; tubes up to the hips"):
+        bt = g.group(boot, Color=cols["Boots"])
         ll = g.group(leg, Hip=r["Hip Left"], Scale=scale, **{"Foot Position": r["Foot Left Position"],
-                                                            "Foot Rotation": r["Foot Left Rotation"],
-                                                            "Boot Color": cols["Boots"]})
+                                                            "Foot Rotation": r["Foot Left Rotation"], "Boot": bt})
         lr = g.group(leg, Hip=r["Hip Right"], Scale=scale, **{"Foot Position": r["Foot Right Position"],
-                                                             "Foot Rotation": r["Foot Right Rotation"],
-                                                             "Boot Color": cols["Boots"]})
+                                                             "Foot Rotation": r["Foot Right Rotation"], "Boot": bt})
     g.output("Geometry", "GEOMETRY", join(g, body, ll, lr))
     return g.finish()

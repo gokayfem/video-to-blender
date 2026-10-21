@@ -185,7 +185,7 @@ def glass():
     r = t.o(t.attr("ss_rand"), "Factor")
     warm = t.math("MULTIPLY", t.maprange(r, 0.45, 0.9, 0.0, 1.0), 0.7)
     interior = t.mixc(warm, hexc("#0C0F12"), hexc("#3A2414"))
-    t.bsdf(interior, 0.18, spec=0.22, emission=hexc("#FFA050"), emit_strength=t.math("MULTIPLY", warm, 0.35))
+    t.bsdf(interior, 0.18, spec=0.22, emission=hexc("#FFA050"), emit_strength=t.math("MULTIPLY", warm, 0.15))
     return m
 
 
