@@ -82,6 +82,11 @@ Blender 5.2+ is required (`$BLENDER`, `blender` on PATH, or the macOS app bundle
   modifier re-evaluate every frame, even multiplied by 0.
 - Looks need the full name (`"AgX - Base Contrast"`); there is no Composite node (group output instead);
   Compare/Random Value socket identifiers changed in 5.2: look sockets up by name.
+- Sample Curve on poly curves interpolates the tangent between vertices, so frames turn along a whole segment;
+  add vertices near corners when a sharp turn matters. Curve to Mesh puts an open path's two caps last.
+- Point clouds are not in `to_mesh()`; convert with Points to Vertices to read their attributes.
+- Float socket subtypes include FREQUENCY but not VELOCITY/ACCELERATION; shader group `default_input` accepts only
+  VALUE (wire vectors explicitly); a shader Attribute node reports alpha 1 even when the attribute is missing.
 - argparse: pass negative values as `--values=-1,3`, `--cam=-2,0,1:...`.
 
 ## Definition of done

@@ -111,7 +111,8 @@ def test_ring_extents():
     assert nkt.close([p[:, 2].min(), p[:, 2].max()], [-0.25, 0.25], 2e-3)
     p = _pos(ring(), {"Radius": 1.0, "Sweep": 2.0})
     ang = np.arctan2(p[:, 1], p[:, 0])
-    assert ang.min() > -1e-3 and ang.max() < 2.0 + 1e-3 and ang.max() > 2.0 - 1e-3
+    tol = 1.0 / 32 + 1e-3                                  # end caps sit square to the end segment (chord)
+    assert ang.min() > -tol and 2.0 - 1e-3 < ang.max() < 2.0 + tol, (ang.min(), ang.max())
     faces = _faces(ring(), {"Radius": 1.0, "Sweep": 2.0})
     assert sum(1 for f in faces if not f[1]) == 2                              # the two flat end caps
 
@@ -145,9 +146,9 @@ def test_profile_revolve_hollow_vessel():
     assert floor.any() and nkt.close(rad[floor].max(), 0.3 + 0.025 * 0.05 / 0.25 - 0.05, 1e-3)
     faces = _faces(profile_revolve(), inputs)
     ups = [f for f in faces if f[0][2] > 0.999]
-    assert {round(f[3][2], 3) for f in ups} == {0.05, 1.0}                     # floor and rim face up
+    assert {round(float(f[3][2]), 3) for f in ups} == {0.05, 1.0}, [(f[3], f[2]) for f in ups]
     downs = [f for f in faces if f[0][2] < -0.999]
-    assert {round(f[3][2], 3) for f in downs} == {0.0}                         # only the base faces down
+    assert {round(float(f[3][2]), 3) for f in downs} == {0.0}                         # only the base faces down
 
 
 # ---- plants ----------------------------------------------------------------------------------------------------

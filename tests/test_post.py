@@ -90,10 +90,10 @@ def test_haze_over_sky_matches_premultiplied_formula():
     f = np.clip(mist * 0.8, 0, 1)[..., None]
     want = sky * (1 - a) + (1 - f) * raw[..., :3] + f * np.array(HAZE) * a
     bg = a[..., 0] < 1e-4
-    assert np.max(np.abs(out[..., :3][bg] - sky[bg])) < 0.02, np.max(np.abs(out[..., :3][bg] - sky[bg]))
+    assert np.max(np.abs(out[..., :3][bg] - sky[bg])) < 1e-3, np.max(np.abs(out[..., :3][bg] - sky[bg]))
     err = np.abs(out[..., :3] - want)
-    assert err.max() < 0.02, (err.max(), np.unravel_index(err.argmax(), err.shape))
-    assert err[edge].max() < 0.02
+    assert err.max() < 1e-3, (err.max(), np.unravel_index(err.argmax(), err.shape))
+    assert err[edge].max() < 1e-3
     assert np.all(out[..., 3] > 0.999)                                # the sky makes the frame opaque
     # the far sphere is hazed more than the near one
     far, near = mist[H // 2, int(W * 0.62)], mist[H // 2, int(W * 0.25)]

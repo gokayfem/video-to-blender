@@ -9,5 +9,62 @@ builder (`from library.<module> import <builder>; tree = <builder>()`) and insta
 | Group | Kind | Builder | Inputs | Summary | Use for |
 |---|---|---|---|---|---|
 | `NK Curve Frame` | geometry | `curve_frame()` | Curve, Length, Offset, Height | Curve-space (s, d, h) to world position and a level orientation on a path curve. | streets, fences, rails, rivers, cables, anything placed along a path |
+| `NK Curve Bend` | geometry | `curve_bend()` | Geometry, Curve, Height, Extend Ends | Bend geometry modelled in curve space (X along, Y left, Z up) onto a path curve, vertex by vertex. | roads, kerbs, cobbles, rails, walls, fences, river banks, any flat layout bent onto a path |
+| `NK Curve Samples` | geometry | `curve_samples()` | Curve, Spacing, Both Sides, Offset, Height, Jitter, Side Jitter, Seed | Points every Spacing along a curve, on one or both sides, with jitter; each stores s, d and its frame. | lamp posts, fence posts, trees along an avenue, bollards, railway sleepers, footprints |
+| `NK Curve Parcels` | geometry | `curve_parcels()` | Curve, Width Min, Width Max, Seed, Both Sides, Offset, Height, Depth, Face Centre | Consecutive random-width parcels along a curve, one point per parcel centre, widths summing to its length. | house rows along a street, market stalls, fence panels, garden plots, shop fronts, quay sheds |
+| `NK Curve Ribbon` | geometry | `curve_ribbon()` | Curve, Width, Offset, Height, Step, Segments Across, Material | A flat strip of given width and offset along a curve, UV-mapped by arc length. | roads, footpaths, rivers, kerb strips, rail beds, garden borders, race tracks |
 
-1 groups in 1 modules.
+## shapes
+
+| Group | Kind | Builder | Inputs | Summary | Use for |
+|---|---|---|---|---|---|
+| `NK Rounded Box` | geometry | `rounded_box()` | Size, Radius, Segments | A box with truly round edges and corners of a fixed radius (a box swept by a sphere), centred at the origin. | toy-like crates, cushions, bricks, signboards, furniture, plinths, phone and appliance bodies |
+| `NK Chamfer Box` | geometry | `chamfer_box()` | Size, Chamfer | A box with a flat 45-degree chamfer of fixed width on every edge, centred at the origin. | timber beams, wall blocks, stone steps, planks, crates, window frames, low-poly furniture |
+| `NK Chamfer Boxes` | geometry | `chamfer_boxes()` | Points, Selection, Size, Rotation, Chamfer | One chamfered box per point with per-point size and rotation, the chamfer kept at a fixed width. | house wall blocks, beams and posts per point, stacked crates, bricks, kerb stones, shelving |
+| `NK Rod` | geometry | `rod()` | Start, End, Radius, Resolution, Caps | A round bar from Start to End with a given radius. | iron bars, railings, posts, poles, branches, pipes, chair legs, sign arms, cables between two points |
+| `NK Ring` | geometry | `ring()` | Radius, Tube Width, Tube Height, Roundness, Sweep, Resolution, Tube Resolution | A torus or flat band lying in the XY plane, with an elliptical-to-square tube and an optional partial sweep. | pot rims, barrel hoops, rings, door knockers, wheels, tyres, halos, life buoys, arches (partial sweep) |
+| `NK Profile Revolve` | geometry | `profile_revolve()` | Height, Smooth Profile, Wall Thickness, Cap Top, Segments, Rings | Lathe a smooth radius profile (five control radii from bottom to top) around Z, optionally hollow. | flower pots, barrels, vases, urns, bottles, columns, lamp posts, bollards, chess pieces, buckets |
+| `NK Leaf` | geometry | `leaf()` | Length, Width, Widest At, Fold, Curl, Resolution | One leaf blade: base at the origin, tip along +X, face up (+Z), with a folded midrib and a curl. | leaves for shrubs, ivy, hedges, potted plants, trees, salad, laurel wreaths, feathers |
+| `NK Blossom` | geometry | `blossom()` | Petals, Size, Petal Width, Cup, Centre Size | A flower head: rounded petals around a domed centre, opening towards +Z. | geraniums, daisies, apple blossom, roses (many petals), flower beds, window boxes, garlands |
+| `NK Foliage Mound` | geometry | `foliage_mound()` | Mound, Seed, Show Mound, Leaf Density, Leaf Size, Leaf Lift, Leaf Color, Color Variation, Underside, Leaf Material … | Clothe a mound mesh in leaves and optional blossoms, tinted per instance (nk_color, nk_rand). | shrubs, hedges, potted plants, flower beds, window boxes, ivy mats, topiary, moss cushions |
+
+## scatter
+
+| Group | Kind | Builder | Inputs | Summary | Use for |
+|---|---|---|---|---|---|
+| `NK Scatter On Surface` | geometry | `scatter_on_surface()` | Surface, Instance, Density, Min Distance, Seed, Mask Attribute, Slope Max, Align | Scatter instances over a mesh at a density, optionally Poisson-spaced, masked by an attribute or slope. | rocks on terrain, grass tufts, trees on hills, mushrooms, debris, flowers in a lawn, studs on a surface |
+| `NK Scatter Along Curve` | geometry | `scatter_along_curve()` | Curve, Instance, Spacing, Both Sides, Offset, Height, Follow Curve, Jitter, Side Jitter, Seed | Instances every Spacing along a curve (one or both sides), following the curve frame or upright. | fence posts, street lamps, avenue trees, bollards, rail sleepers, stepping stones, bunting flags |
+| `NK Clumps` | geometry | `clumps()` | Surface, Instance, Clump Density, Clump Spacing, Clump Radius, Members Min, Members Max, Concentration, Snap To Surface, Seed … | Scatter clump centres on a surface, then a random number of members around each within a radius. | flower clumps, stone piles, mushroom rings, tufts of grass, crowds in groups, bushes in a meadow |
+
+## motion
+
+| Group | Kind | Builder | Inputs | Summary | Use for |
+|---|---|---|---|---|---|
+| `NK Damped Spring` | geometry | `damped_spring()` | Time, Drive Frequency, Natural Frequency, Damping, Amplitude, Phase, Step Start | A damped spring's steady response to a periodic drive (gain and phase lag) and its step response. | ear flaps, scarves, satchels, antennae, hanging signs, tails, anything that bounces after a body or settles after a jolt |
+| `NK Gait Step` | geometry | `gait_step()` | Time, Speed, Distance, Stride, Offset, Stance, Lift, Reach | One leg's gait from distance travelled: the foot stays planted during stance and swings on a lifted arc. | walking characters' feet, robot legs, animal paws, footprints, anything that plants and lifts without sliding |
+| `NK Wind Gust` | geometry | `wind_gust()` | Time, Position, Travel Speed, Strength, Gustiness, Gust Period, Lag, Seed | Smooth bounded gust strength from noise of time, travelling along a coordinate as a gust front. | flags, bunting, grass, trees, washing lines, lanterns, sails, smoke, anything moved by wind |
+| `NK Pendulum Sway` | geometry | `pendulum_sway()` | Time, Length, Gravity, Wind, Lean, Swing, Phase, Wobble | Small-angle pendulum sway: a lean pushed by the wind plus a ring at the pendulum's own period. | hanging signs, lanterns, chandeliers, wind chimes, bells, swings, hanging plants |
+| `NK Time Remap` | geometry | `time_remap()` | Time, Offset, Speed, Loop Length, Ping Pong, Ease | Retime a clock: offset and speed, then optionally loop (sawtooth or ping-pong) with ease in/out. | seamless loops, ping-pong cycles, slow motion, staggered starts, eased one-shot moves |
+| `NK Flicker` | geometry | `flicker()` | Time, Seed, Rate, Amount, Strength | Bounded smooth light flicker: noise of time plus a faint fast wobble, dipping below a steady strength. | lanterns, candles, torches, fires, neon signs, failing bulbs, screens |
+
+## materials
+
+| Group | Kind | Builder | Inputs | Summary | Use for |
+|---|---|---|---|---|---|
+| `NK Attribute Tint` | shader | `attribute_tint()` | Base Color, Attribute Weight, Value Variation, Hue Variation, Roughness, Roughness Variation | Per-piece colour from Geometry Nodes: nk_color replaces the base colour where present, nk_rand varies it. | houses, props, scattered rocks, leaves, crowds: any instances painted per piece by Geometry Nodes |
+| `NK Stucco` | shader | `stucco()` | Color, Grime Color, Mottle, Base Height, Grime Height, Grime, Roughness, Bump | Soft mottled lime plaster with fine speckle, a pitted bump and grime rising from the base of the wall. | plastered walls, render, adobe, painted masonry, cottages, town houses |
+| `NK Wood Grain` | shader | `wood_grain()` | Light Color, Dark Color, Ring Scale, Distortion, Fibre, Roughness, Bump | Wood: distorted growth rings around the object Z axis (grain runs along Z) with long fibre streaks. | beams, planks, furniture, barrels, doors, fences, log ends, handles |
+| `NK Stone` | shader | `stone()` | Color, Mortar Color, Stone Scale, Variation, Edge Wear, Mortar Width, Roughness, Bump | Irregular stones in mortar: per-cell tone and hue, rounded worn edges, grain, and a bump that domes each | cobbles, flagstones, rubble walls, dry-stone walls, plinths, paving, rocks |
+| `NK Felt` | shader | `felt()` | Color, Mottle, Fuzz Scale, Fuzz, Sheen, Roughness | Matte felt: low mottling, a soft sheen at grazing angles, a little subsurface and a fine fibre-fuzz bump. | felt toys, hats, coats, wool, plush characters, cushions, soft props |
+| `NK Terracotta` | shader | `terracotta()` | Color, Dark Color, Variation, Bloom, Roughness, Bump | Unglazed fired clay: warm mottling between two clay tones, chalky pale bloom, pores, per-piece darkening. | flower pots, roof tiles, bricks, amphorae, floor tiles, clay figures |
+| `NK Stripes` | shader | `stripes()` | Coordinate, Vector, Color A, Color B, Width, Ratio, Softness, Weave Scale, Weave, Roughness | Antialiased two-colour stripes along a coordinate, on a woven canvas with a soft sheen. | awnings, deck chairs, sails, flags, bunting, shirts, rugs, barber poles, road markings |
+| `NK Glow Glass` | shader | `glow_glass()` | Core Color, Rim Color, Glass Color, Strength, Flicker, Rim, Rim Width, Pane UV, Roughness | Emissive glass with a warm bright core and a darker, redder rim, driven by a strength (e.g. NK Flicker). | lanterns, lit windows, lamps, fireflies, candles in jars, glowing orbs, signs |
+
+## post
+
+| Group | Kind | Builder | Inputs | Summary | Use for |
+|---|---|---|---|---|---|
+| `NK Haze Over Sky` | compositor | `haze_over_sky()` | Image, Mist, Haze Color, Haze Amount, Sky Horizon, Sky Top, Horizon, Top | Distance haze by the Mist pass on premultiplied geometry, laid over a screen-space sky gradient. | street scenes, landscapes, cityscapes, aerial perspective, foggy mornings, stylised skies |
+| `NK Soft Glow` | compositor | `soft_glow()` | Image, Threshold, Smoothness, Strength, Size, Tint | A soft bloom around bright pixels, tinted, added over the image. | lanterns, street lights, candles, sunlit highlights, neon, magic effects, dreamy looks |
+
+33 groups in 6 modules.
