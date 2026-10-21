@@ -11,11 +11,11 @@ One modifier group, "Surface Scatter", dresses whatever mesh it sits on (or a te
                               scatter_meadow (gentle, low ground) and scatter_rock (steep or high ground)
     Surface Scatter Rocks     boulders and pebbles (displaced icospheres, NK Stone) by NK Scatter On Surface,
                               weighted by scatter_rock
-    Surface Scatter Grass     NK Clumps of upright NK Leaf blades on the meadow faces
+    Surface Scatter Grass     NK Clumps of NK Grass Tufts on the meadow faces (NK Root Tip Gradient shading)
     Surface Scatter Flowers   NK Clumps of stemmed NK Blossom flowers on the meadow, one colour per clump
     Surface Scatter Bushes    NK Foliage Mound bushes, Poisson-spaced over the meadow
 
-Everything is realized at the end so materials can read nk_color, nk_rand, nk_part and scatter_* attributes.
+Everything is realized at the end so materials can read nk_color, nk_rand, nk_part, nk_tip and scatter_* attributes.
 
 Scenes: "Meadow" (the generated terrain, the gallery shot) and "Scatter Transfer" (the same group on a lumpy
 icosphere planet, Radial Up on). To dress your own mesh: add the modifier to it, switch Generate Terrain off, and
@@ -29,9 +29,9 @@ import bpy
 from nodekit import inspect
 from nodekit import scene as S
 from nodekit.graph import Graph, once
-from library.shapes import leaf, blossom, foliage_mound, rod
+from library.shapes import leaf, blossom, foliage_mound, rod, grass_tuft
 from library.scatter import scatter_on_surface, clumps
-from library.materials import make_material, attribute_tint, stone, lin
+from library.materials import make_material, attribute_tint, stone, root_tip_gradient, lin
 from library.post import haze_over_sky, soft_glow
 
 NAME = "Surface Scatter"
@@ -143,26 +143,6 @@ def rock_paint():
 
 
 @once
-def blade_paint():
-    g = Graph("Surface Scatter Blade Paint", kind="SHADER",
-              description="Grass blade: dark at the root, light at the tip (scatter_tip), varied per blade by NK "
-                          "Attribute Tint (nk_rand), with a little translucency")
-    tip = g.input("Tip", "FLOAT", 0.0, min=0.0, max=1.0, subtype="FACTOR",
-                  desc="0 at the root, 1 at the tip (wire the scatter_tip attribute here)")
-    root_c = g.input("Root Color", "COLOR", lin("#36521C"), desc="Blade colour at the root")
-    tip_c = g.input("Tip Color", "COLOR", lin("#A4B04A"), desc="Blade colour at the tip")
-    with g.frame("Root-to-tip gradient, then per-blade value and hue variation"):
-        c = g.mix(g.math("POWER", tip, 1.4), root_c, tip_c, data_type="RGBA")["Result"]
-        # Attribute Weight 0: blades and stems ignore nk_color (flower stems carry their patch's colour)
-        tint = g.group(attribute_tint(), **{"Base Color": c, "Attribute Weight": 0.0, "Value Variation": 0.35,
-                                            "Hue Variation": 0.04, "Roughness": 0.55})
-    g.output("Color", "COLOR", tint["Color"], desc="Blade colour")
-    g.output("Roughness", "FLOAT", tint["Roughness"], desc="Roughness")
-    g.output("Subsurface", "FLOAT", 0.15, desc="A little light through the blades")
-    return g.finish()
-
-
-@once
 def petal_paint():
     g = Graph("Surface Scatter Petal Paint", kind="SHADER",
               description="Petals and leaves painted by nk_color (NK Attribute Tint), with the flower centres "
@@ -185,7 +165,8 @@ def materials():
     return {
         "ground": make_material("Surface Scatter Ground", ground_paint(), Slope="attr:scatter_slope"),
         "rock": make_material("Surface Scatter Rock", rock_paint()),
-        "blade": make_material("Surface Scatter Blade", blade_paint(), Tip="attr:scatter_tip"),
+        "blade": make_material("Surface Scatter Blade", root_tip_gradient, Factor="attr:nk_tip",
+                               Random="attr:nk_rand"),
         "petal": make_material("Surface Scatter Petal", petal_paint(), Part="attr:nk_part"),
     }
 
@@ -358,34 +339,37 @@ def rocks(mats):
 
 
 # ---- Surface Scatter Grass ---------------------------------------------------------------------------------------
+TUFT_BLADES = 3          # blades in one small NK Grass Tuft; a clump of 6..12 of them is a tuft of 18..36 blades
+
+
 @once
 def grass(mats):
-    lf, cl = leaf(), clumps()
-    g = Graph("Surface Scatter Grass", description="Tufts of grass: NK Clumps of single blades (an NK Leaf stood "
-                                                   "upright, curling over) splayed out from each tuft's centre. "
-                                                   "Blades store scatter_tip (0 root, 1 tip) for the gradient")
+    tf, cl = grass_tuft(), clumps()
+    g = Graph("Surface Scatter Grass", description="Tufts of grass: NK Clumps of small NK Grass Tufts (curved blades "
+                                                   "leaning out from their roots), so a tuft has between Blades Min "
+                                                   "and Blades Max blades. Blades carry nk_tip (0 root, 1 tip) for "
+                                                   "NK Root Tip Gradient and nk_rand per blade")
     surf = g.input("Surface", "GEOMETRY", desc="Faces to grow on (the meadow part of the surface)")
     dens = g.input("Tuft Density", "FLOAT", 10.0, min=0.0, max=1000.0, desc="Tufts per square metre")
-    bmin = g.input("Blades Min", "INT", 18, min=1, max=500, desc="Fewest blades per tuft")
-    bmax = g.input("Blades Max", "INT", 36, min=1, max=500, desc="Most blades per tuft")
+    bmin = g.input("Blades Min", "INT", 18, min=1, max=500, desc="Fewest blades per tuft (in steps of 3)")
+    bmax = g.input("Blades Max", "INT", 36, min=1, max=500, desc="Most blades per tuft (in steps of 3)")
     rad = g.input("Tuft Radius", "FLOAT", 0.12, min=0.0, max=10.0, subtype="DISTANCE", desc="Spread of a tuft")
     height = g.input("Blade Height", "FLOAT", 0.32, min=0.01, max=5.0, subtype="DISTANCE", desc="Blade length")
     align = g.input("Align", "FLOAT", 0.2, min=0.0, max=1.0, subtype="FACTOR",
                     desc="0 blades grow up world Z, 1 along the surface normal")
     seed = g.input("Seed", "INT", 0, min=0, max=100000, desc="Random seed")
-    with g.frame("One blade: a narrow NK Leaf, stood up (tip to +Z), curling over; scatter_tip along it"):
-        blade = g.group(lf, Length=height, Width=0.1, Curl=0.35, Fold=0.4, Resolution=5,
-                        **{"Widest At": 0.15})["Mesh"]
-        blade = g.node("GeometryNodeTransform", Geometry=blade, Rotation=(0.0, -math.pi / 2, 0.0))["Geometry"]
-        tip = g.math("DIVIDE", g.separate(position(g))["Z"], height, clamp=True)
-        blade = store(g, blade, "scatter_tip", tip)
-        blade = g.node("GeometryNodeSetMaterial", Geometry=blade, Material=mats["blade"])["Geometry"]
-    with g.frame("Tufts: clumps of blades leaning out from the centre"):
-        tufts = g.group(cl, Surface=surf, Instance=blade, Seed=seed, Align=align,
-                        **{"Clump Density": dens, "Clump Radius": rad, "Members Min": bmin, "Members Max": bmax,
-                           "Concentration": 0.8, "Random Tilt": 0.45, "Scale Min": 0.55, "Scale Max": 1.25,
+    with g.frame("One small tuft: NK Grass Tuft (nk_tip, nk_rand per blade), blade material"):
+        tuft = g.group(tf, Blades=TUFT_BLADES, Height=height, Radius=g.math("MULTIPLY", rad, 0.25), Spread=0.4,
+                       Curl=0.35, Fold=0.4, Resolution=5, Seed=seed, **{"Blade Width": 0.1, "Height Min": 0.7})["Mesh"]
+        tuft = g.node("GeometryNodeSetMaterial", Geometry=tuft, Material=mats["blade"])["Geometry"]
+    with g.frame("Tufts: clumps of small tufts, Blades Min..Max / 3 of them"):
+        nmin = g.math("MAXIMUM", g.math("ROUND", g.math("DIVIDE", bmin, TUFT_BLADES)), 1.0)
+        nmax = g.math("MAXIMUM", g.math("ROUND", g.math("DIVIDE", bmax, TUFT_BLADES)), nmin)
+        tufts = g.group(cl, Surface=surf, Instance=tuft, Seed=seed, Align=align,
+                        **{"Clump Density": dens, "Clump Radius": rad, "Members Min": nmin, "Members Max": nmax,
+                           "Concentration": 0.8, "Random Tilt": 0.3, "Scale Min": 0.55, "Scale Max": 1.25,
                            "Falloff": 0.5})["Instances"]
-    g.output("Instances", "GEOMETRY", tufts, desc="Blade instances with nk_rand")
+    g.output("Instances", "GEOMETRY", tufts, desc="Tuft instances (blades with nk_tip, nk_rand)")
     return g.finish()
 
 
@@ -404,7 +388,7 @@ def flower(mats):
         lv = g.group(lf, Length=g.math("MULTIPLY", stem_h, 0.4), Width=0.25, Curl=0.3, Resolution=4)["Mesh"]
         lv = g.node("GeometryNodeTransform", Geometry=lv, Rotation=(0.0, -0.9, 2.0))["Geometry"]
         green = g.node("GeometryNodeSetMaterial", Geometry=join(g, stem, lv), Material=mats["blade"])["Geometry"]
-        green = store(g, green, "scatter_tip", g.math("DIVIDE", g.separate(position(g))["Z"], stem_h, clamp=True))
+        green = store(g, green, "nk_tip", g.math("DIVIDE", g.separate(position(g))["Z"], stem_h, clamp=True))
     with g.frame("Blossom on top, facing up and a little forward (petal material)"):
         head = g.group(bl, Size=size, Petals=petals, Cup=0.25, **{"Petal Width": 0.55, "Centre Size": 0.32})["Mesh"]
         head = g.node("GeometryNodeTransform", Geometry=head, Translation=top, Rotation=(0.0, 0.35, 0.0))["Geometry"]

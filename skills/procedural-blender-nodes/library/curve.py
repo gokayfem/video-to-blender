@@ -10,6 +10,7 @@ Point attributes written by the samplers (read them with Named Attribute, or in 
     nk_rand   FLOAT  0..1 per point                     nk_rot    QUATERNION  frame (+X along, +Y left, +Z up)
 Parcels add nk_s0 (start), nk_width (arc length), nk_chord (straight frontage) and nk_fan (see NK Curve Parcels).
 """
+import math
 from nodekit.graph import Graph
 from nodekit.library import nodegroup
 
@@ -107,10 +108,16 @@ def curve_bend():
 @nodegroup("NK Curve Samples", tags=["curve", "path", "points", "spacing", "placement"],
            use="lamp posts, fence posts, trees along an avenue, bollards, railway sleepers, footprints")
 def curve_samples():
-    """Points every Spacing along a curve, on one or both sides, with jitter; each stores s, d and its frame."""
+    """Points every Spacing along a curve, on one or both sides, with jitter; each stores s, d and its frame.
+
+    On a closed (cyclic) curve the point at s = L would sit on the point at s = 0, so it is left out. Cyclic is
+    read from the first spline.
+    """
     frame = curve_frame()
     g = Graph("NK Curve Samples", description="Points every Spacing of arc length along a path curve (floor(L / "
-                                              "Spacing) + 1 per side, the first at s = 0), at lateral Offset or "
+                                              "Spacing) + 1 per side, the first at s = 0; on a closed (cyclic) "
+                                              "curve ceil(L / Spacing), since s = L is the seam point s = 0 "
+                                              "again), at lateral Offset or "
                                               "on both sides at +/-Offset, jittered along and across. Stores "
                                               "nk_s, nk_d, nk_index, nk_side, nk_rand and nk_rot; Rotation is "
                                               "the level curve frame (+X along, +Y left, +Z up)")
@@ -126,10 +133,15 @@ def curve_samples():
     sjit = g.input("Side Jitter", "FLOAT", 0.0, min=0.0, max=100.0, subtype="DISTANCE", panel="Variation",
                    desc="Random lateral shift, up to this distance either way")
     seed = g.input("Seed", "INT", 0, min=0, max=100000, panel="Variation", desc="Random seed")
-    with g.frame("Count: floor(L / Spacing) + 1 per side"):
+    with g.frame("Count: floor(L / Spacing) + 1 per side; ceil(L / Spacing) on a closed curve (no seam duplicate)"):
         length = g.node("GeometryNodeCurveLength", Curve=curve)["Length"]
         sp = g.math("MAXIMUM", spacing, 0.01)
-        n = g.math("ADD", g.math("FLOOR", g.math("ADD", g.math("DIVIDE", length, sp), 1e-4)), 1.0, label="per side")
+        ratio = g.math("DIVIDE", length, sp)
+        cyclic = g.node("GeometryNodeSampleIndex", props={"data_type": "BOOLEAN", "domain": "CURVE"},
+                        Geometry=curve, Value=g.node("GeometryNodeInputSplineCyclic"), Index=0)["Value"]
+        n_open = g.math("ADD", g.math("FLOOR", g.math("ADD", ratio, 1e-4)), 1.0)
+        n_closed = g.math("MAXIMUM", g.math("CEIL", g.math("SUBTRACT", ratio, 1e-4)), 1.0)
+        n = _fswitch(g, cyclic, n_open, n_closed)
         sides = _fswitch(g, both, 1.0, 2.0)
         pts = g.node("GeometryNodePoints", Count=g.math("MULTIPLY", n, sides))["Points"]
     with g.frame("Curve-space (s, d) of each point: index along, side, jitter"):
@@ -287,4 +299,66 @@ def curve_ribbon():
         bent = g.group(bend, Geometry=flat, Curve=curve, **{"Extend Ends": False})
         out = g.node("GeometryNodeSetMaterial", Geometry=bent, Material=mat)
     g.output("Mesh", "GEOMETRY", out["Geometry"], desc="The strip, faces up")
+    return g.finish()
+
+
+@nodegroup("NK Catenary Point", tags=["curve", "rope", "cable", "catenary", "sag", "hanging"],
+           use="bunting ropes, washing lines, power and telegraph cables, chains, garlands, rope bridges, "
+               "festoon lights, hammocks")
+def catenary_point():
+    """A point on a rope hanging between two anchors: the chord point lowered by a catenary (or parabola) sag,
+    optionally swung about the chord.
+
+    With chord C = End - Start and u in 0..1, Position = Start + u C + R(Swing) (0, 0, -Sag f(u)), where R rotates
+    about the chord and f(0) = f(1) = 0, f(1/2) = 1. Parabola: f = 4u(1 - u). Catenary: f = sinh(h u) sinh(h (1 -
+    u)) / sinh^2(h / 2), with h solved (6 Newton steps) from Sag / |C| = (cosh h - 1) / (2 h); exact for level
+    anchors, it tends to the parabola for shallow ropes and is deeper-bellied for slack ones. Tangent is dP/du
+    normalised. All inputs are fields, so one node places every point of many ropes.
+    """
+    g = Graph("NK Catenary Point", description=" ".join(catenary_point.__doc__.strip().split("\n\n")[0].split()))
+    a = g.input("Start", "VECTOR", (0.0, 0.0, 0.0), subtype="TRANSLATION", desc="Anchor at U = 0 (field)")
+    b = g.input("End", "VECTOR", (4.0, 0.0, 0.0), subtype="TRANSLATION", desc="Anchor at U = 1 (field)")
+    u = g.input("U", "FLOAT", 0.5, min=0.0, max=1.0, subtype="FACTOR", desc="Position along the rope (field)")
+    sag = g.input("Sag", "FLOAT", 0.5, min=0.0, max=1000.0, subtype="DISTANCE",
+                  desc="Drop below the chord at mid-rope (field)")
+    swing = g.input("Swing", "FLOAT", 0.0, min=-3.1416, max=3.1416, subtype="ANGLE",
+                    desc="Rotation of the hanging rope about its chord (field), e.g. NK Pendulum Sway.Angle")
+    cat = g.input("Catenary", "BOOL", True, desc="True catenary (hanging chain); off: parabola (uniform load "
+                                                 "along the span, a suspension-bridge deck)")
+    with g.frame("Chord, sag ratio r = Sag / |chord|"):
+        chord = g.vmath("SUBTRACT", b, a)
+        span = g.math("MAXIMUM", g.vmath("LENGTH", chord)["Value"], 1e-6)
+        r = g.math("DIVIDE", g.math("MAXIMUM", sag, 0.0), span, label="r")
+    with g.frame("Solve 2 sinh^2(h/2) = 2 r h by Newton from h0 = min(4r, ln(1 + 16r) + 1) (from above)"):
+        h = g.math("MAXIMUM", g.math("MINIMUM", g.math("MULTIPLY", r, 4.0), g.math(
+            "ADD", g.math("LOGARITHM", g.math("MULTIPLY_ADD", r, 16.0, 1.0), math.e), 1.0)), 1e-4)
+        for _ in range(6):
+            sh = g.math("SINH", g.math("MULTIPLY", h, 0.5))
+            f = g.math("SUBTRACT", g.math("MULTIPLY", g.math("MULTIPLY", sh, sh), 2.0),
+                       g.math("MULTIPLY", g.math("MULTIPLY", r, h), 2.0))
+            fp = g.math("SUBTRACT", g.math("SINH", h), g.math("MULTIPLY", r, 2.0))
+            h = g.math("MAXIMUM", g.math("SUBTRACT", h, g.math("DIVIDE", f, g.math("MAXIMUM", fp, 1e-6))), 1e-4)
+    with g.frame("Shape f(u) and slope f'(u): catenary or parabola"):
+        den = g.math("POWER", g.math("SINH", g.math("MULTIPLY", h, 0.5)), 2.0)
+        f_c = g.math("DIVIDE", g.math("MULTIPLY", g.math("SINH", g.math("MULTIPLY", h, u)), g.math(
+            "SINH", g.math("MULTIPLY", h, g.math("SUBTRACT", 1.0, u)))), den)
+        d_c = g.math("DIVIDE", g.math("MULTIPLY", h, g.math("SINH", g.math(
+            "MULTIPLY", h, g.math("MULTIPLY_ADD", u, -2.0, 1.0)))), den)
+        f_p = g.math("MULTIPLY", g.math("MULTIPLY", u, g.math("SUBTRACT", 1.0, u)), 4.0)
+        d_p = g.math("MULTIPLY_ADD", u, -8.0, 4.0)
+        shape = _fswitch(g, cat, f_p, f_c)
+        slope = _fswitch(g, cat, d_p, d_c)
+    with g.frame("Drop below the chord, swung about it; tangent = chord + d(drop)/du"):
+        neg = g.math("MULTIPLY", sag, -1.0)
+        rot = g.node("FunctionNodeAxisAngleToRotation", Axis=g.vmath("NORMALIZE", chord), Angle=swing)["Rotation"]
+        drop = g.node("FunctionNodeRotateVector", Vector=g.combine(0.0, 0.0, g.math("MULTIPLY", shape, neg)),
+                      Rotation=rot)["Vector"]
+        ddu = g.node("FunctionNodeRotateVector", Vector=g.combine(0.0, 0.0, g.math("MULTIPLY", slope, neg)),
+                     Rotation=rot)["Vector"]
+        pos = g.vmath("ADD", g.vmath("ADD", a, g.vmath("SCALE", chord, scale=u)), drop)
+        tan = g.vmath("NORMALIZE", g.vmath("ADD", chord, ddu))
+    g.output("Position", "VECTOR", pos, desc="Point on the rope")
+    g.output("Tangent", "VECTOR", tan, desc="Unit tangent along the rope (Start to End)")
+    g.output("Swing Rotation", "ROTATION", rot, desc="The swing as a rotation about the chord")
+    g.output("Drop", "FLOAT", g.math("MULTIPLY", shape, sag), desc="Distance below the chord at U (Sag f(U))")
     return g.finish()

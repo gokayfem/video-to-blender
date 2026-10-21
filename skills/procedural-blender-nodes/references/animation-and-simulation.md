@@ -105,9 +105,9 @@ A loop of length `L` seconds is seamless when every periodic term completes a wh
 
 ```python
 zin, zout = g.zone("SIMULATION", [("VECTOR", "Velocity")])
-g.connect(points, zin.i("Geometry"))                  # initial state, read on the first frame only
+g.connect(points, zin.i("Geometry"))                  # initial state, read on the start frame only
 g.connect(initial_velocity, zin.i("Velocity"))
-dt = zin["Delta Time"]
+dt = zin["Delta Time"]                                # 0 on the start frame, which still runs one step
 ...                                                   # update fields with dt
 g.connect(new_geo, zout.i("Geometry")); g.connect(new_vel, zout.i("Velocity"))
 out = zout["Geometry"]
@@ -118,7 +118,7 @@ Behaviour, verified in Blender 5.2.2 (background, 24 fps):
 | Fact | Detail |
 |---|---|
 | Delta Time | seconds per frame, 1/fps (0.041667 at 24 fps). Use it for every rate so the result does not depend on fps |
-| First frame | the zone outputs the initial state (no step) |
+| First frame | the start frame already runs **one step with Delta Time 0**: the zone body is evaluated on the initial state and its output is shown. Anything scaled by Delta Time does not move, but per-step events do happen once (a step counter reads 1, a trail appends a point, `Random(id, step)` branches, Duplicate/Delete per step). Gate such events with `Delta Time > 0`, or connect `Delta Time < 1e-9` to `zout.i("Skip")` to show the untouched initial state on the start frame (test: `tests/test_motion.py::test_simulation_first_frame_runs_a_zero_dt_step`) |
 | Start frame | `scene.frame_start`, or `scene.use_custom_simulation_range` + `simulation_frame_start/end`. Before the start the initial state is shown |
 | Returning to the start frame | resets the simulation |
 | **Skipping frames** | jumping from frame 3 to 10 without a cache advanced the state by **one** step, not seven. Scripts must step every frame in order from the start (`for f in range(start, end+1): scene.frame_set(f)`) or bake first |

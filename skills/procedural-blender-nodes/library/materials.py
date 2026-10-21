@@ -1,11 +1,18 @@
-"""Shader node groups for procedural surfaces, used inside materials. Each group returns the terms a Principled
+"""Shader node groups for procedural surfaces, used inside materials (plus NK Store Local Coords, the geometry
+group that gives every realized piece its own texture space). Each group returns the terms a Principled
 BSDF takes (Color, Roughness, Normal, and Emission/Sheen where they matter), so a material is one group node wired
 into one BSDF: `make_material("Wall", stucco, Color=(0.8, 0.6, 0.4, 1))`.
 
 Texture coordinates come in through a `Vector` input (object coordinates in metres by default when built with
 `make_material`); per-piece variation comes from Geometry Nodes through the named attributes `nk_color`
 (FLOAT_COLOR) and `nk_rand` (FLOAT 0..1), which NK Attribute Tint reads. A missing attribute reads as 0, so every
-term here is written so that 0 means "no effect"."""
+term here is written so that 0 means "no effect".
+
+Per-piece texture space: after Realize Instances, object coordinates are shared by every piece, so wood rings all
+centre on the object origin and a moving piece swims through its pattern. Store each piece's own coordinates with
+the geometry group NK Store Local Coords (attribute nk_local, before instancing or from a stored per-piece frame);
+NK Wood Grain, NK Stone and NK Stucco then read nk_local wherever it is present (Use Local) and fall back to Vector
+elsewhere, and Piece Shift moves each piece's pattern by its nk_rand so identical pieces differ."""
 import math
 import bpy
 from nodekit.graph import Graph, layout
@@ -58,6 +65,27 @@ def _vector_input(g, scale_default=1.0):
     return vec, scale
 
 
+SHIFT_DIR = (0.585, 0.321, 1.0)          # Piece Shift direction: not along an axis, so rings and cells both move
+
+
+def _local_inputs(g, vec):
+    """Use Local / Piece Shift inputs and the resolved coordinate: nk_local where present (else Vector), plus
+    nk_rand x Piece Shift x SHIFT_DIR. Presence is |nk_local| > 0 (a missing attribute reads as 0)."""
+    use = g.input("Use Local", "FLOAT", 1.0, min=0.0, max=1.0, subtype="FACTOR", panel="Texture Space",
+                  desc="1: use the per-piece nk_local attribute (NK Store Local Coords) where it exists, falling "
+                       "back to Vector; 0: always Vector")
+    shift = g.input("Piece Shift", "FLOAT", 0.0, min=0.0, max=1000.0, subtype="DISTANCE", panel="Texture Space",
+                    desc="Move each piece's pattern by nk_rand x this distance, so identical pieces differ")
+    with g.frame("Texture space: per-piece nk_local where present, else Vector; shifted by nk_rand"):
+        loc = g.node("ShaderNodeAttribute", props={"attribute_type": "GEOMETRY", "attribute_name": "nk_local"})
+        rnd = g.node("ShaderNodeAttribute", props={"attribute_type": "GEOMETRY", "attribute_name": "nk_rand"})
+        present = g.math("GREATER_THAN", g.vmath("LENGTH", loc["Vector"])["Value"], 1e-7)
+        v = g.mix(g.math("MULTIPLY", present, use), vec, loc["Vector"], data_type="VECTOR")["Result"]
+        off = g.vmath("SCALE", SHIFT_DIR, scale=g.math("MULTIPLY", rnd["Factor"], shift))["Vector"]
+        v = g.vmath("ADD", v, off)["Vector"]
+    return v
+
+
 # ---- groups ----------------------------------------------------------------------------------------------------
 @nodegroup("NK Attribute Tint", kind="SHADER", tags=["material", "attribute", "variation", "tint", "color"],
            use="houses, props, scattered rocks, leaves, crowds: any instances painted per piece by Geometry Nodes")
@@ -104,7 +132,8 @@ def stucco():
     """Soft mottled lime plaster with fine speckle, a pitted bump and grime rising from the base of the wall.
 
     Mottle is large soft blotches plus fine speckle; grime is a streaky darkening from Base Height up to Base
-    Height + Grime Height (object Z in metres), multiplied toward Grime Color.
+    Height + Grime Height (Z of Vector in metres, object coordinates: the ground line stays put even when the
+    pattern reads per-piece nk_local), multiplied toward Grime Color.
     """
     g = Graph("NK Stucco", kind="SHADER", description=_doc(stucco))
     vec, scale = _vector_input(g)
@@ -118,8 +147,9 @@ def stucco():
     grime = g.input("Grime", "FLOAT", 0.6, min=0.0, max=1.0, subtype="FACTOR", desc="Grime amount")
     rough = g.input("Roughness", "FLOAT", 0.92, min=0.0, max=1.0, subtype="FACTOR", desc="Base roughness")
     bump = g.input("Bump", "FLOAT", 0.12, min=0.0, max=1.0, subtype="FACTOR", desc="Bump strength of the pits")
+    pv = _local_inputs(g, vec)
     with g.frame("Mottle: soft blotches and fine speckle"):
-        p = _coords(g, vec, scale)
+        p = _coords(g, pv, scale)
         blot = _noise(g, p, 0.9, 5.0, 0.6)
         fine = _noise(g, p, 14.0, 3.0, 0.5)
         lo = g.math("SUBTRACT", 1.0, mottle)
@@ -149,10 +179,12 @@ def stucco():
 @nodegroup("NK Wood Grain", kind="SHADER", tags=["material", "wood", "grain", "timber"],
            use="beams, planks, furniture, barrels, doors, fences, log ends, handles")
 def wood_grain():
-    """Wood: distorted growth rings around the object Z axis (grain runs along Z) with long fibre streaks.
+    """Wood: distorted growth rings around the piece's Z axis (grain runs along Z) with long fibre streaks.
 
     Rings are a saw-profile ring wave (sharp latewood edge), distorted by noise; fibres are noise stretched along
-    Z. Orient pieces so their length runs along object Z, or rotate the Vector.
+    Z. The coordinate is the piece's own nk_local where present (NK Store Local Coords: each board, beam or post
+    gets rings around its own axis after realize) and Vector (object coordinates) elsewhere. Model or store pieces
+    with their length along Z (NK Store Local Coords Grain Axis), or rotate the Vector.
     """
     g = Graph("NK Wood Grain", kind="SHADER", description=_doc(wood_grain))
     vec, scale = _vector_input(g)
@@ -163,8 +195,9 @@ def wood_grain():
     fibre = g.input("Fibre", "FLOAT", 0.6, min=0.0, max=1.0, subtype="FACTOR", desc="Strength of the fibre streaks")
     rough = g.input("Roughness", "FLOAT", 0.6, min=0.0, max=1.0, subtype="FACTOR", desc="Base roughness")
     bump = g.input("Bump", "FLOAT", 0.15, min=0.0, max=1.0, subtype="FACTOR", desc="Bump strength of the grain")
+    pv = _local_inputs(g, vec)
     with g.frame("Rings: saw-profile ring wave around Z, distorted"):
-        p = _coords(g, vec, scale)
+        p = _coords(g, pv, scale)
         wave = g.node("ShaderNodeTexWave", props={"wave_type": "RINGS", "rings_direction": "Z",
                                                   "wave_profile": "SAW"},
                       Vector=p, Scale=g.math("MULTIPLY", rings, 0.159155), Distortion=distort, Detail=2.0,
@@ -194,7 +227,8 @@ def stone():
     stone and sinks the joints.
 
     Cells are Voronoi cells (Scale x Stone Scale per metre); the distance to the cell edge gives the mortar joint,
-    the rounded shoulder and the paler worn rim.
+    the rounded shoulder and the paler worn rim. Cells follow the piece's nk_local where present (rocks and
+    blocks that move or are instanced keep their own stones), else Vector.
     """
     g = Graph("NK Stone", kind="SHADER", description=_doc(stone))
     vec, scale = _vector_input(g)
@@ -209,8 +243,9 @@ def stone():
                     desc="Joint width as a share of a stone")
     rough = g.input("Roughness", "FLOAT", 0.82, min=0.0, max=1.0, subtype="FACTOR", desc="Stone roughness")
     bump = g.input("Bump", "FLOAT", 0.4, min=0.0, max=1.0, subtype="FACTOR", desc="Bump strength")
+    pv = _local_inputs(g, vec)
     with g.frame("Cells: per-stone random colour and the distance to the cell edge"):
-        p = _coords(g, vec, scale)
+        p = _coords(g, pv, scale)
         f1 = g.node("ShaderNodeTexVoronoi", props={"voronoi_dimensions": "3D", "feature": "F1"},
                     Vector=p, Scale=cells, Randomness=0.9)
         edge = g.node("ShaderNodeTexVoronoi", props={"voronoi_dimensions": "3D", "feature": "DISTANCE_TO_EDGE"},
@@ -402,6 +437,134 @@ def glow_glass():
     return g.finish()
 
 
+@nodegroup("NK Ground", kind="SHADER", tags=["material", "ground", "grass", "meadow", "earth", "terrain"],
+           use="meadows, lawns, fields, pastures, verges, dirt yards, forest floor, terrain seen from a few metres")
+def ground():
+    """Mottled ground: a base colour broken by broad and fine noise, warmer where brighter, with patches of a second
+    colour and a fine upright grass bump.
+
+    Wire Color from Geometry Nodes (attr:nk_color, e.g. a meadow colour painted per vertex). Tone k = 1 + Mottle x
+    1.6 x (0.6 broad + 0.4 fine - 0.5); where k > 1 the colour warms toward Warm Color. Patch Amount mixes in Patch
+    Color over large noise blobs (0: none). The bump is noise stretched along Z, like short grass from above.
+    """
+    g = Graph("NK Ground", kind="SHADER", description=_doc(ground))
+    vec, scale = _vector_input(g)
+    col = g.input("Color", "COLOR", lin("#5F8432"), desc="Ground colour (wire attr:nk_color for painted ground)")
+    warm = g.input("Warm Color", "COLOR", lin("#C8B860"), desc="Colour the brighter mottles warm toward")
+    mottle = g.input("Mottle", "FLOAT", 0.5, min=0.0, max=1.0, subtype="FACTOR", desc="Strength of the mottling")
+    broad_s = g.input("Mottle Scale", "FLOAT", 0.6, min=0.001, max=1000.0, desc="Broad mottles per metre "
+                                                                                 "(the fine ones are 12x)")
+    patch_c = g.input("Patch Color", "COLOR", lin("#A9A452"), panel="Patches",
+                      desc="Second colour in large patches (dry grass, bare earth, moss)")
+    patch = g.input("Patch Amount", "FLOAT", 0.0, min=0.0, max=1.0, subtype="FACTOR", panel="Patches",
+                    desc="Share of the ground in Patch Color (0 none)")
+    patch_s = g.input("Patch Scale", "FLOAT", 0.12, min=0.001, max=1000.0, panel="Patches", desc="Patches per metre")
+    bump = g.input("Bump", "FLOAT", 0.4, min=0.0, max=1.0, subtype="FACTOR", desc="Strength of the grass bump")
+    rough = g.input("Roughness", "FLOAT", 0.9, min=0.0, max=1.0, subtype="FACTOR", desc="Roughness")
+    with g.frame("Patches: Patch Color over large noise blobs"):
+        p = _coords(g, vec, scale)
+        blob = _noise(g, p, patch_s, 4.0, 0.6)
+        lo = g.math("SUBTRACT", 0.75, g.math("MULTIPLY", patch, 0.45))
+        pm = g.math("MULTIPLY", g.map_range(blob, lo, g.math("ADD", lo, 0.12), 0.0, 1.0, interp="SMOOTHSTEP")[
+            "Result"], g.math("GREATER_THAN", patch, 0.0))
+        base = _mixc(g, pm, col, patch_c)
+    with g.frame("Mottle: broad and fine noise; brighter patches turn warmer"):
+        broad = _noise(g, p, broad_s, 3.0, 0.5)
+        fine = _noise(g, p, g.math("MULTIPLY", broad_s, 11.67), 2.0, 0.5)
+        k = g.math("ADD", g.math("MULTIPLY", broad, 0.6), g.math("MULTIPLY", fine, 0.4))
+        k = g.math("MULTIPLY_ADD", g.math("SUBTRACT", k, 0.5), g.math("MULTIPLY", mottle, 1.6), 1.0)
+        warmed = _mixc(g, g.math("SUBTRACT", k, 1.0, clamp=True), base, warm)
+        out = _tone(g, warmed, k)
+    with g.frame("Bump: fine noise stretched upright, like short grass"):
+        grass = _noise(g, g.vmath("MULTIPLY", p, (60.0, 60.0, 10.0))["Vector"], 1.0, 1.0, 0.5)
+        nrm = _bump(g, grass, bump, 0.02)
+    g.output("Color", "COLOR", out, desc="Ground colour")
+    g.output("Roughness", "FLOAT", rough, desc="Roughness")
+    g.output("Normal", "VECTOR", nrm, desc="Bumped normal")
+    g.output("Patch", "FLOAT", pm, desc="1 in the patches, 0 elsewhere")
+    return g.finish()
+
+
+@nodegroup("NK Root Tip Gradient", kind="SHADER", tags=["material", "gradient", "grass", "plant", "attribute"],
+           use="grass blades, reeds, leaves, hair and fur strands, feathers, flames, candles: anything coloured "
+               "from root to tip")
+def root_tip_gradient():
+    """Two-colour gradient along a stored 0..1 attribute (root to tip), varied per piece, with some translucency.
+
+    Color = mix(Root Color, Tip Color, Factor^Power), then darkened by up to Value Variation and hue-shifted by up
+    to +-Hue Variation by Random (wire attr:nk_rand; 0 changes nothing). Wire Factor from the attribute, e.g.
+    attr:nk_tip written by NK Grass Tuft.
+    """
+    g = Graph("NK Root Tip Gradient", kind="SHADER", description=_doc(root_tip_gradient))
+    fac = g.input("Factor", "FLOAT", 0.0, min=0.0, max=1.0, subtype="FACTOR",
+                  desc="0 at the root, 1 at the tip (wire attr:nk_tip or any stored 0..1 attribute)")
+    rnd = g.input("Random", "FLOAT", 0.0, min=0.0, max=1.0, subtype="FACTOR",
+                  desc="Per-piece random 0..1 (wire attr:nk_rand); 0 = no variation")
+    root_c = g.input("Root Color", "COLOR", lin("#36521C"), desc="Colour at Factor 0")
+    tip_c = g.input("Tip Color", "COLOR", lin("#A4B04A"), desc="Colour at Factor 1")
+    power = g.input("Power", "FLOAT", 1.4, min=0.05, max=20.0, desc="Gradient exponent (> 1 keeps the root "
+                                                                    "colour further up)")
+    v_var = g.input("Value Variation", "FLOAT", 0.35, min=0.0, max=1.0, subtype="FACTOR",
+                    desc="Darken by up to this much per piece (from Random)")
+    h_var = g.input("Hue Variation", "FLOAT", 0.04, min=0.0, max=0.5, subtype="FACTOR",
+                    desc="Shift hue by up to +- this much per piece (from Random)")
+    rough = g.input("Roughness", "FLOAT", 0.55, min=0.0, max=1.0, subtype="FACTOR", desc="Roughness")
+    sss = g.input("Translucency", "FLOAT", 0.15, min=0.0, max=1.0, subtype="FACTOR",
+                  desc="Subsurface weight: light through thin blades")
+    with g.frame("Gradient: mix(root, tip, factor^power)"):
+        t = g.math("POWER", g.math("MINIMUM", g.math("MAXIMUM", fac, 0.0), 1.0), power)
+        col = _mixc(g, t, root_c, tip_c)
+    with g.frame("Per piece: darken by Random, hue +- sin(2 pi Random)"):
+        val = g.math("SUBTRACT", 1.0, g.math("MULTIPLY", rnd, v_var))
+        hue = g.math("ADD", 0.5, g.math("MULTIPLY", g.math("SINE", g.math("MULTIPLY", rnd, TAU)), h_var))
+        hs = g.node("ShaderNodeHueSaturation", Hue=hue, Saturation=1.0, Value=val, Fac=1.0, Color=col)
+    g.output("Color", "COLOR", hs["Color"], desc="Gradient colour")
+    g.output("Roughness", "FLOAT", rough, desc="Roughness")
+    g.output("Subsurface", "FLOAT", sss, desc="Subsurface weight")
+    g.output("Gradient", "FLOAT", t, desc="The shaped factor 0..1")
+    return g.finish()
+
+
+@nodegroup("NK Store Local Coords", tags=["material", "texture", "coordinates", "wood", "attribute"],
+           use="planks, beams, posts, logs, poles, rails, bricks, rocks, crates: give every realized piece its own "
+               "wood grain, stone cells or plaster pattern")
+def store_local_coords():
+    """Store each point's position in its piece's own frame as nk_local, so shaders texture every piece in its own
+    space after realize.
+
+    nk_local = axis swap(inverse(Rotation) (position - Centre)) + Shift. Before instancing leave Centre and
+    Rotation at zero/identity (the prototype's own space); on realized pieces wire the per-piece frame stored on
+    them (e.g. the centre and rotation captured on the instance points). Grain Axis picks which local axis becomes
+    Z (wood rings run around Z): 0 X, 1 Y, 2 Z (cyclic swaps, so handedness is kept). NK Wood Grain, NK Stone and
+    NK Stucco read nk_local where present.
+    """
+    g = Graph("NK Store Local Coords", description=_doc(store_local_coords))
+    geo = g.input("Geometry", "GEOMETRY", desc="Pieces to store coordinates on (a prototype before instancing, or "
+                                               "realized pieces with a per-piece frame)")
+    sel = g.input("Selection", "BOOL", True, hide_value=True, desc="Which points get nk_local")
+    centre = g.input("Centre", "VECTOR", (0.0, 0.0, 0.0), subtype="TRANSLATION",
+                     desc="Origin of the piece's frame (field; 0 for a prototype)")
+    rot = g.input("Rotation", "ROTATION", desc="Orientation of the piece's frame (field; identity for a prototype)")
+    axis = g.input("Grain Axis", "INT", 2, min=0, max=2,
+                   desc="Local axis that becomes nk_local Z, along which wood grain runs: 0 X, 1 Y, 2 Z")
+    shift = g.input("Shift", "VECTOR", (0.0, 0.0, 0.0), subtype="TRANSLATION",
+                    desc="Offset added to nk_local (field), e.g. per piece so identical pieces differ")
+    with g.frame("Local position: inverse rotation of (position - Centre)"):
+        rel = g.vmath("SUBTRACT", g.node("GeometryNodeInputPosition"), centre)
+        inv = g.node("FunctionNodeInvertRotation", Rotation=rot)["Rotation"]
+        loc = g.separate(g.node("FunctionNodeRotateVector", Vector=rel, Rotation=inv)["Vector"])
+    with g.frame("Grain Axis to Z by a cyclic swap: X -> (Y, Z, X), Y -> (Z, X, Y), Z unchanged"):
+        sw = g.node("GeometryNodeIndexSwitch", props={"data_type": "VECTOR"}, Index=axis)
+        sw.b.index_switch_items.new()
+        g.connect(g.combine(loc["Y"], loc["Z"], loc["X"]), sw.i("0"))
+        g.connect(g.combine(loc["Z"], loc["X"], loc["Y"]), sw.i("1"))
+        g.connect(g.combine(loc["X"], loc["Y"], loc["Z"]), sw.i("2"))
+        out = g.node("GeometryNodeStoreNamedAttribute", props={"data_type": "FLOAT_VECTOR", "domain": "POINT"},
+                     Geometry=geo, Selection=sel, Name="nk_local", Value=g.vmath("ADD", sw["Output"], shift))
+    g.output("Geometry", "GEOMETRY", out["Geometry"], desc="The geometry with nk_local")
+    return g.finish()
+
+
 # ---- material helper (plain function, not a group) ------------------------------------------------------------
 BSDF_OUTPUTS = {"Color": "Base Color", "Roughness": "Roughness", "Normal": "Normal", "Emission": "Emission Color",
                 "Emission Strength": "Emission Strength", "Sheen": "Sheen Weight", "Sheen Tint": "Sheen Tint",
@@ -421,6 +584,11 @@ def make_material(name, group, bsdf=None, **inputs):
     ``"attr:nk_rand"`` (Attribute node, GEOMETRY type), ``"object"``/``"generated"``/``"uv"`` (texture coordinates)
     or ``"object.x"`` (one axis of them). Unset ``Vector`` inputs get object coordinates and an unset
     ``Coordinate`` gets object X. ``bsdf`` sets Principled inputs directly, e.g. ``{"Specular IOR Level": 0.3}``.
+
+    Realized instances share one object space: for wood, stone and plaster textured per piece, store nk_local on
+    the geometry with NK Store Local Coords; NK Wood Grain, NK Stone and NK Stucco pick it up by themselves (their
+    Use Local input) and use the Vector given here only where nk_local is missing. ``Piece Shift`` moves each
+    piece's pattern by its nk_rand.
     """
     tree = group() if callable(group) else group
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)

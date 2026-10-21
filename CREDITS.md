@@ -13,6 +13,7 @@ assets, add-ons or scripts are copied.
 | Premultiplied-alpha compositing, Over operator (NK Haze Over Sky) | Porter and Duff, "Compositing Digital Images", SIGGRAPH 1984 | math |
 | Rounded box as a Minkowski sum of a box and a sphere (NK Rounded Box) | standard computational geometry | math |
 | Poisson-disk (minimum-distance) scattering (NK Scatter On Surface) | Blender's Distribute Points on Faces, Poisson Disk mode; Bridson, "Fast Poisson Disk Sampling", SIGGRAPH 2007 sketch | used through the node |
+| Catenary curve y = a·cosh(x/a) for hanging ropes (NK Catenary Point) | standard mechanics (Bernoulli, Leibniz, Huygens, 1691) | math |
 | Oklab (comparison tooling) | Björn Ottosson, bottosson.github.io/posts/oklab | public domain / MIT |
 | Storybook Street reference clip | AI-generated video (fal.media), used as a visual specification; not redistributed | see prompts/storybook-street/README.md |
 

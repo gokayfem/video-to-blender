@@ -94,6 +94,8 @@ def light_world(sun_elev=30.0, sun_azim=145.0, strength=4.0, sun_color="#FFE2BC"
         vol.inputs["Color"].default_value = (*srgb(haze_color), 1)
         vol.inputs["Density"].default_value = haze
         nt.links.new(vol.outputs[0], nt.nodes["World Output"].inputs["Volume"])
+    from nodekit.graph import layout
+    layout(nt, None, nt.nodes.get("World Output"))
     sc.world = w
     return ob
 

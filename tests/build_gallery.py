@@ -40,6 +40,7 @@ for tpl in sorted(TEMPLATES.glob("*.py")):
     if a.only and name not in a.only.split(","):
         continue
     blend = build / f"{name}.blend"
+    blend.unlink(missing_ok=True)                 # never validate a stale file from an earlier run
     cmd = [blender(), "-b", "--factory-startup", "--python", str(tpl), "--", "--out", str(blend)]
     if not a.check:
         cmd += ["--render", str(GALLERY / f"{name}.png"), "--width", str(a.width), "--samples", str(a.samples)]

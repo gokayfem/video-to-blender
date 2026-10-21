@@ -13,6 +13,7 @@ builder (`from library.<module> import <builder>; tree = <builder>()`) and insta
 | `NK Curve Samples` | geometry | `curve_samples()` | Curve, Spacing, Both Sides, Offset, Height, Jitter, Side Jitter, Seed | Points every Spacing along a curve, on one or both sides, with jitter; each stores s, d and its frame. | lamp posts, fence posts, trees along an avenue, bollards, railway sleepers, footprints |
 | `NK Curve Parcels` | geometry | `curve_parcels()` | Curve, Width Min, Width Max, Seed, Both Sides, Offset, Height, Depth, Face Centre | Consecutive random-width parcels along a curve, one point per parcel centre, widths summing to its length. | house rows along a street, market stalls, fence panels, garden plots, shop fronts, quay sheds |
 | `NK Curve Ribbon` | geometry | `curve_ribbon()` | Curve, Width, Offset, Height, Step, Segments Across, Material | A flat strip of given width and offset along a curve, UV-mapped by arc length. | roads, footpaths, rivers, kerb strips, rail beds, garden borders, race tracks |
+| `NK Catenary Point` | geometry | `catenary_point()` | Start, End, U, Sag, Swing, Catenary | A point on a rope hanging between two anchors: the chord point lowered by a catenary (or parabola) sag, | bunting ropes, washing lines, power and telegraph cables, chains, garlands, rope bridges, festoon lights, hammocks |
 
 ## shapes
 
@@ -27,6 +28,7 @@ builder (`from library.<module> import <builder>; tree = <builder>()`) and insta
 | `NK Leaf` | geometry | `leaf()` | Length, Width, Widest At, Fold, Curl, Resolution | One leaf blade: base at the origin, tip along +X, face up (+Z), with a folded midrib and a curl. | leaves for shrubs, ivy, hedges, potted plants, trees, salad, laurel wreaths, feathers |
 | `NK Blossom` | geometry | `blossom()` | Petals, Size, Petal Width, Cup, Centre Size | A flower head: rounded petals around a domed centre, opening towards +Z. | geraniums, daisies, apple blossom, roses (many petals), flower beds, window boxes, garlands |
 | `NK Foliage Mound` | geometry | `foliage_mound()` | Mound, Seed, Show Mound, Leaf Density, Leaf Size, Leaf Lift, Leaf Color, Color Variation, Underside, Leaf Material … | Clothe a mound mesh in leaves and optional blossoms, tinted per instance (nk_color, nk_rand). | shrubs, hedges, potted plants, flower beds, window boxes, ivy mats, topiary, moss cushions |
+| `NK Grass Tuft` | geometry | `grass_tuft()` | Blades, Height, Height Min, Radius, Spread, Blade Width, Curl, Fold, Resolution, Seed | A tuft of curved grass blades rooted on a small disc, leaning outwards, with a 0..1 root-to-tip attribute. | grass tufts in meadows and lawns, reeds, sedges, rushes, tussocks at fence posts, weeds in cracks, hair-like fibre bunches |
 
 ## scatter
 
@@ -35,6 +37,7 @@ builder (`from library.<module> import <builder>; tree = <builder>()`) and insta
 | `NK Scatter On Surface` | geometry | `scatter_on_surface()` | Surface, Instance, Density, Min Distance, Seed, Mask Attribute, Slope Max, Align | Scatter instances over a mesh at a density, optionally Poisson-spaced, masked by an attribute or slope. | rocks on terrain, grass tufts, trees on hills, mushrooms, debris, flowers in a lawn, studs on a surface |
 | `NK Scatter Along Curve` | geometry | `scatter_along_curve()` | Curve, Instance, Spacing, Both Sides, Offset, Height, Follow Curve, Jitter, Side Jitter, Seed | Instances every Spacing along a curve (one or both sides), following the curve frame or upright. | fence posts, street lamps, avenue trees, bollards, rail sleepers, stepping stones, bunting flags |
 | `NK Clumps` | geometry | `clumps()` | Surface, Instance, Clump Density, Clump Spacing, Clump Radius, Members Min, Members Max, Concentration, Snap To Surface, Seed … | Scatter clump centres on a surface, then a random number of members around each within a radius. | flower clumps, stone piles, mushroom rings, tufts of grass, crowds in groups, bushes in a meadow |
+| `NK Facade Frame` | geometry | `facade_frame()` | Mesh, Selection, Max Tilt | One point per wall face of a mesh, at the centre of the face's rectangle, with its size and an outward frame. | windows, doors, shutters, signs, balconies, wall lamps and drainpipes on any building mass; posters on kiosks, panels on crates and cabinets |
 
 ## motion
 
@@ -53,12 +56,15 @@ builder (`from library.<module> import <builder>; tree = <builder>()`) and insta
 |---|---|---|---|---|---|
 | `NK Attribute Tint` | shader | `attribute_tint()` | Base Color, Attribute Weight, Value Variation, Hue Variation, Roughness, Roughness Variation | Per-piece colour from Geometry Nodes: nk_color replaces the base colour where present, nk_rand varies it. | houses, props, scattered rocks, leaves, crowds: any instances painted per piece by Geometry Nodes |
 | `NK Stucco` | shader | `stucco()` | Color, Grime Color, Mottle, Base Height, Grime Height, Grime, Roughness, Bump | Soft mottled lime plaster with fine speckle, a pitted bump and grime rising from the base of the wall. | plastered walls, render, adobe, painted masonry, cottages, town houses |
-| `NK Wood Grain` | shader | `wood_grain()` | Light Color, Dark Color, Ring Scale, Distortion, Fibre, Roughness, Bump | Wood: distorted growth rings around the object Z axis (grain runs along Z) with long fibre streaks. | beams, planks, furniture, barrels, doors, fences, log ends, handles |
+| `NK Wood Grain` | shader | `wood_grain()` | Light Color, Dark Color, Ring Scale, Distortion, Fibre, Roughness, Bump | Wood: distorted growth rings around the piece's Z axis (grain runs along Z) with long fibre streaks. | beams, planks, furniture, barrels, doors, fences, log ends, handles |
 | `NK Stone` | shader | `stone()` | Color, Mortar Color, Stone Scale, Variation, Edge Wear, Mortar Width, Roughness, Bump | Irregular stones in mortar: per-cell tone and hue, rounded worn edges, grain, and a bump that domes each | cobbles, flagstones, rubble walls, dry-stone walls, plinths, paving, rocks |
 | `NK Felt` | shader | `felt()` | Color, Mottle, Fuzz Scale, Fuzz, Sheen, Roughness | Matte felt: low mottling, a soft sheen at grazing angles, a little subsurface and a fine fibre-fuzz bump. | felt toys, hats, coats, wool, plush characters, cushions, soft props |
 | `NK Terracotta` | shader | `terracotta()` | Color, Dark Color, Variation, Bloom, Roughness, Bump | Unglazed fired clay: warm mottling between two clay tones, chalky pale bloom, pores, per-piece darkening. | flower pots, roof tiles, bricks, amphorae, floor tiles, clay figures |
 | `NK Stripes` | shader | `stripes()` | Coordinate, Vector, Color A, Color B, Width, Ratio, Softness, Weave Scale, Weave, Roughness | Antialiased two-colour stripes along a coordinate, on a woven canvas with a soft sheen. | awnings, deck chairs, sails, flags, bunting, shirts, rugs, barber poles, road markings |
 | `NK Glow Glass` | shader | `glow_glass()` | Core Color, Rim Color, Glass Color, Strength, Flicker, Rim, Rim Width, Pane UV, Roughness | Emissive glass with a warm bright core and a darker, redder rim, driven by a strength (e.g. NK Flicker). | lanterns, lit windows, lamps, fireflies, candles in jars, glowing orbs, signs |
+| `NK Ground` | shader | `ground()` | Color, Warm Color, Mottle, Mottle Scale, Patch Color, Patch Amount, Patch Scale, Bump, Roughness | Mottled ground: a base colour broken by broad and fine noise, warmer where brighter, with patches of a second | meadows, lawns, fields, pastures, verges, dirt yards, forest floor, terrain seen from a few metres |
+| `NK Root Tip Gradient` | shader | `root_tip_gradient()` | Factor, Random, Root Color, Tip Color, Power, Value Variation, Hue Variation, Roughness, Translucency | Two-colour gradient along a stored 0..1 attribute (root to tip), varied per piece, with some translucency. | grass blades, reeds, leaves, hair and fur strands, feathers, flames, candles: anything coloured from root to tip |
+| `NK Store Local Coords` | geometry | `store_local_coords()` | Geometry, Selection, Centre, Rotation, Grain Axis, Shift | Store each point's position in its piece's own frame as nk_local, so shaders texture every piece in its own | planks, beams, posts, logs, poles, rails, bricks, rocks, crates: give every realized piece its own wood grain, stone cells or plaster pattern |
 
 ## post
 
@@ -67,4 +73,4 @@ builder (`from library.<module> import <builder>; tree = <builder>()`) and insta
 | `NK Haze Over Sky` | compositor | `haze_over_sky()` | Image, Mist, Haze Color, Haze Amount, Sky Horizon, Sky Top, Horizon, Top | Distance haze by the Mist pass on premultiplied geometry, laid over a screen-space sky gradient. | street scenes, landscapes, cityscapes, aerial perspective, foggy mornings, stylised skies |
 | `NK Soft Glow` | compositor | `soft_glow()` | Image, Threshold, Smoothness, Strength, Size, Tint | A soft bloom around bright pixels, tinted, added over the image. | lanterns, street lights, candles, sunlit highlights, neon, magic effects, dreamy looks |
 
-33 groups in 6 modules.
+39 groups in 6 modules.

@@ -7,8 +7,9 @@ Technique: curve-space placement. NK Curve Samples puts a post every Post Spacin
 is dropped onto the Ground object by a ray, leans a little and gets its own height. Rails are spans between
 consecutive posts (Sample Index i+1, wrapping on closed curves), one chamfered box per span and rail level, so
 they follow the leaning posts instead of being bent copies of the curve. Everything solid is NK Chamfer Boxes;
-the wood is NK Wood Grain read in each piece's own frame (attribute nk_grain), tinted and silvered per piece
-(nk_color / nk_dark). Grass tufts (a template-local blade fan) are clumped around each post base with NK Clumps.
+the wood is NK Wood Grain read in each piece's own frame (nk_local, stored by NK Store Local Coords from the
+piece's centre and rotation), tinted and silvered per piece (nk_color / nk_dark). NK Grass Tuft tufts are clumped
+around each post base with NK Clumps; the meadow is shaded with NK Ground.
 
 Scenes (one shared "Curve Fence" group):
   Fence            an S-curve across a rolling hillside, three-quarter view (rendered for the gallery)
@@ -25,9 +26,10 @@ from nodekit import inspect
 from nodekit import scene as S
 from nodekit.graph import Graph, once
 from library.curve import curve_samples
-from library.shapes import chamfer_boxes, leaf, blossom
+from library.shapes import chamfer_boxes, blossom, grass_tuft
 from library.scatter import clumps, scatter_on_surface
-from library.materials import make_material, wood_grain, attribute_tint, lin
+from library.materials import make_material, wood_grain, attribute_tint, store_local_coords, lin
+from library.materials import ground as ground_shader
 
 NAME = "Curve Fence"
 TAU = 2 * math.pi
@@ -60,43 +62,15 @@ def rot_vec(g, v, rot):
 
 
 def grain(g, mesh, swap):
-    """nk_grain: each vertex in its piece's own frame (stored as fc_c / fc_q), long axis on Z for NK Wood Grain,
-    shifted per piece so no two boards share a pattern. Then drop the working attributes."""
-    local = rot_vec(g, g.vmath("SUBTRACT", g.node("GeometryNodeInputPosition"), attr(g, "fc_c", "FLOAT_VECTOR")),
-                    g.node("FunctionNodeInvertRotation", Rotation=attr(g, "fc_q", "QUATERNION")))
-    if swap:                                               # rails: long axis X -> Z
-        p = g.separate(local)
-        local = g.combine(p["Y"], p["Z"], p["X"])
-    shift = g.vmath("SCALE", (3.1, 1.7, 5.3), scale=g.math("MULTIPLY", attr(g, "nk_rand"), 10.0))
-    mesh = store(g, mesh, "nk_grain", g.vmath("ADD", local, shift), "FLOAT_VECTOR")
+    """nk_local (NK Store Local Coords): each vertex in its piece's own frame (stored as fc_c / fc_q), long axis on
+    Z for NK Wood Grain (rails: X -> Z). The wood material shifts each piece by nk_rand (Piece Shift). Then drop
+    the working attributes."""
+    mesh = g.group(store_local_coords(), Geometry=mesh, Centre=attr(g, "fc_c", "FLOAT_VECTOR"),
+                   Rotation=attr(g, "fc_q", "QUATERNION"), **{"Grain Axis": 0 if swap else 2})["Geometry"]
     return g.node("GeometryNodeRemoveAttribute", Geometry=mesh, Name="fc_*", **{"Pattern Mode": "Wildcard"})["Geometry"]
 
 
 # ---- template-local groups -----------------------------------------------------------------------------------
-@once
-def build_tuft():
-    """A grass tuft: a fan of NK Leaf blades rising from the origin and arching outwards."""
-    g = Graph("Curve Fence Tuft", description="A grass tuft: Blades NK Leaf blades stood up from the origin, each "
-                                              "tilted outwards by up to Spread and spun around Z, arching under "
-                                              "their own curl")
-    n = g.input("Blades", "INT", 26, min=1, max=64, desc="Blades per tuft")
-    h = g.input("Height", "FLOAT", 0.35, min=0.01, max=5.0, subtype="DISTANCE", desc="Tallest blade length")
-    spread = g.input("Spread", "FLOAT", 0.35, min=0.0, max=1.5, subtype="ANGLE", desc="Largest outward tilt")
-    seed = g.input("Seed", "INT", 0, min=0, max=100000, desc="Random seed")
-    with g.frame("One point per blade; stand the blade up, tilt it out, spin it round"):
-        pts = g.node("GeometryNodePoints", Count=n)["Points"]
-        idx = g.node("GeometryNodeInputIndex")["Index"]
-        tilt = g.math("MULTIPLY", rand(g, 0.25, 1.0, seed, 1, idx), spread)
-        spin = g.math("MULTIPLY_ADD", idx, 2.39996, rand(g, -0.4, 0.4, seed, 2, idx), label="golden angle")
-        rot = g.node("FunctionNodeEulerToRotation", Euler=g.combine(0.0, g.math("SUBTRACT", tilt, math.pi / 2), spin))
-        blade = g.group(leaf(), Length=1.0, Width=0.045, **{"Widest At": 0.2, "Fold": 0.5, "Curl": 0.5,
-                                                           "Resolution": 4})
-        out = g.node("GeometryNodeInstanceOnPoints", Points=pts, Instance=blade, Rotation=rot["Rotation"],
-                     Scale=g.math("MULTIPLY", h, rand(g, 0.55, 1.0, seed, 3, idx)))["Instances"]
-    g.output("Tuft", "GEOMETRY", out, desc="Blade instances (realize before reading attributes in shaders)")
-    return g.finish()
-
-
 @once
 def build_ground():
     """Rolling meadow: a grid raised into a ridge, rolled by noise, tinted and dotted with tufts and flowers."""
@@ -157,7 +131,8 @@ def build_ground():
                                                            interp="SMOOTHSTEP"))
         ground = g.node("GeometryNodeSetMaterial", Geometry=ground, Material=gmat)["Geometry"]
     with g.frame("Tufts and flowers scattered over the meadow"):
-        tuft = g.group(build_tuft(), Seed=seed)
+        tuft = g.group(grass_tuft(), Seed=seed, Blades=26, Height=0.35, Radius=0.0, Spread=0.35, Curl=0.5,
+                       Fold=0.5, Resolution=4, **{"Blade Width": 0.045})
         tf = g.group(scatter_on_surface(), Surface=ground, Instance=tuft, Density=tufts, Seed=seed,
                      **{"Scale Min": 0.4, "Scale Max": 1.3, "Align": 0.3, "Mask Attribute": "fc_meadow"})
         tf_m = g.node("GeometryNodeSetMaterial", Geometry=tf["Instances"], Material=gmat)["Geometry"]
@@ -178,7 +153,7 @@ def build_ground():
 
 def build_fence(wood, grass):
     """The top modifier group: posts, rails and grass along the Path, standing on the Ground."""
-    tuft = build_tuft()
+    tuft = grass_tuft()
     g = Graph(NAME, modifier=True,
               description="A rustic split-rail fence along any curve: posts every Post Spacing dropped onto the "
                           "Ground object, leaning a little, joined by Rails rails per span, with gate gaps, "
@@ -302,13 +277,15 @@ def build_fence(wood, grass):
             "GeometryNodeInstanceOnPoints", Points=posts, Instance=disc["Mesh"])["Instances"])["Geometry"]
         discs = store(g, discs, "nk_color", grass_c, "FLOAT_COLOR")
         area = math.pi * 0.4 ** 2 * math.cos(math.pi / 10)          # area of the 10-gon
-        tf = g.group(clumps(), Surface=discs, Instance=g.group(tuft, Height=tuft_h, Seed=seed), Seed=seed,
+        blades = g.group(tuft, Height=tuft_h, Seed=seed, Blades=26, Radius=0.0, Spread=0.35, Curl=0.5, Fold=0.5,
+                         Resolution=4, **{"Blade Width": 0.045})
+        tf = g.group(clumps(), Surface=discs, Instance=blades, Seed=seed,
                      **{"Clump Density": g.math("DIVIDE", tufts, area * 4.5), "Clump Radius": 0.35,
                         "Members Min": 3, "Members Max": 6, "Scale Min": 0.6, "Scale Max": 1.0, "Falloff": 0.5})
         grass_geo = g.node("GeometryNodeSetMaterial", Geometry=tf["Instances"], Material=grass)["Geometry"]
         grass_geo = g.node("GeometryNodeSwitch", props={"input_type": "GEOMETRY"}, Switch=show_grass,
                            **{"True": grass_geo})["Output"]
-    with g.frame("Join and realize (so shaders read nk_color, nk_rand, nk_grain)"):
+    with g.frame("Join and realize (so shaders read nk_color, nk_rand, nk_local)"):
         join = g.node("GeometryNodeJoinGeometry")
         g.connect(grass_geo, join.i("Geometry"))
         g.connect(wood_geo, join.i("Geometry"))
@@ -407,44 +384,16 @@ def build_rails():
         boxes = g.group(chamfer_boxes(), Points=pts, Rotation=attr(g, "fc_q", "QUATERNION"),
                         Size=attr(g, "fc_size", "FLOAT_VECTOR"), Chamfer=0.01)["Mesh"]
         out = grain(g, boxes, swap=True)
-    g.output("Rails", "GEOMETRY", out, desc="All rails as one mesh, with nk_color, nk_dark, nk_rand, nk_grain")
+    g.output("Rails", "GEOMETRY", out, desc="All rails as one mesh, with nk_color, nk_dark, nk_rand, nk_local")
     return g.finish()
 
 
 # ---- materials -----------------------------------------------------------------------------------------------
-@once
-def build_meadow_shader():
-    """Meadow ground: per-vertex colour from Geometry Nodes, mottled at two scales, with a fine grassy bump."""
-    g = Graph("Curve Fence Meadow", kind="SHADER",
-              description="Meadow ground seen from a few metres: the Geometry Nodes colour (nk_color) mottled by "
-                          "a broad and a fine noise, slightly yellower where it is brighter, with a fine bump of "
-                          "short grass")
-    col = g.input("Color", "COLOR", lin("#5F8432"), desc="Ground colour (wire attribute nk_color here)")
-    vec = g.input("Vector", "VECTOR", (0.0, 0.0, 0.0), hide_value=True, desc="Texture coordinate in metres")
-    mottle = g.input("Mottle", "FLOAT", 0.5, min=0.0, max=1.0, subtype="FACTOR", desc="Strength of the mottling")
-    bump = g.input("Bump", "FLOAT", 0.4, min=0.0, max=1.0, subtype="FACTOR", desc="Strength of the grass bump")
-    with g.frame("Mottle: broad and fine noise, brighter patches turn yellower"):
-        broad = g.node("ShaderNodeTexNoise", Vector=vec, Scale=0.6, Detail=3.0)["Factor"]
-        fine = g.node("ShaderNodeTexNoise", Vector=vec, Scale=7.0, Detail=2.0)["Factor"]
-        k = g.math("ADD", g.math("MULTIPLY", broad, 0.6), g.math("MULTIPLY", fine, 0.4))
-        k = g.math("MULTIPLY_ADD", g.math("SUBTRACT", k, 0.5), g.math("MULTIPLY", mottle, 1.6), 1.0)
-        warm = g.mix(g.math("SUBTRACT", k, 1.0, clamp=True), col, lin("#C8B860"), data_type="RGBA")["Result"]
-        out = g.vmath("SCALE", warm, scale=k)
-    with g.frame("Bump: fine noise stretched upright, like short grass"):
-        grass = g.node("ShaderNodeTexNoise", Vector=g.vmath("MULTIPLY", vec, (60.0, 60.0, 10.0)), Scale=1.0,
-                       Detail=1.0)["Factor"]
-        nrm = g.node("ShaderNodeBump", Strength=bump, Distance=0.02, Height=grass)["Normal"]
-    g.output("Color", "COLOR", out, desc="Ground colour")
-    g.output("Roughness", "FLOAT", 0.9, desc="Roughness")
-    g.output("Normal", "VECTOR", nrm, desc="Bumped normal")
-    return g.finish(split_inputs=False)
-
-
 def materials():
     wood = make_material("Curve Fence Wood", wood_grain, **{
-        "Vector": "attr:nk_grain", "Light Color": "attr:nk_color", "Dark Color": "attr:nk_dark",
+        "Light Color": "attr:nk_color", "Dark Color": "attr:nk_dark", "Piece Shift": 53.0,
         "Ring Scale": 60.0, "Distortion": 1.2, "Fibre": 1.0, "Roughness": 0.85, "Bump": 0.5})
-    grass = make_material("Curve Fence Grass", build_meadow_shader(), **{"Color": "attr:nk_color", "Mottle": 0.5})
+    grass = make_material("Curve Fence Grass", ground_shader, **{"Color": "attr:nk_color", "Mottle": 0.5})
     flower = make_material("Curve Fence Flower", attribute_tint, **{
         "Base Color": lin("#F2E9C8"), "Attribute Weight": 0.0, "Value Variation": 0.2, "Hue Variation": 0.15,
         "Roughness": 0.6})

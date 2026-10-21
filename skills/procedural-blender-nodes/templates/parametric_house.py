@@ -6,7 +6,8 @@
 One modifier group, "Parametric House", builds a whole half-timbered house from Width, Depth and Storeys. Every
 part is modelled in FACADE space and placed through one shared frame, so the parts read as short formulas:
 
-    Parametric House Facades   one point per wall face and storey (front, right, back, left): face centre f_centre,
+    Parametric House Facades   NK Facade Frame on one box per storey: a point per wall face (front, right, back,
+                               left, ordered 4 x storey + side): face centre f_centre,
                                turn f_rot (local X along the wall, Y out of it, Z up), length, floor heights, the
                                number of window slots, window size and height, the door slot
     Parametric House Openings  window points (one per slot, the door slot left out, plus a gable window) and the
@@ -37,6 +38,7 @@ from nodekit import inspect
 from nodekit import scene as S
 from nodekit.graph import Graph, once
 from library.curve import curve_parcels, curve_ribbon
+from library.scatter import facade_frame
 from library.shapes import chamfer_boxes, foliage_mound, profile_revolve
 from library.materials import (make_material, attribute_tint, stucco, wood_grain, stone, terracotta, glow_glass,
                                lin)
@@ -315,7 +317,8 @@ def rise(g, i):
 # ---- Parametric House Facades --------------------------------------------------------------------------------------
 @once
 def facades():
-    g = Graph("Parametric House Facades", description="One point per wall face and storey (index = 4 x storey + "
+    g = Graph("Parametric House Facades", description="One point per wall face and storey (NK Facade Frame on "
+                                                       "one box per storey, sorted so index = 4 x storey + "
                                                        "side; side 0 front +Y, 1 right +X, 2 back, 3 left). Stores "
                                                        "the facade frame (f_centre, f_rot: X along the wall, Y out), "
                                                        "f_len, floor heights f_zb/f_z1, window slots f_n/f_slot, "
@@ -323,19 +326,34 @@ def facades():
     i = inputs(g, "Width", "Depth", "Storeys", "Ground Floor Height", "Floor Height", "Jetty", "Window Width",
                "Window Height", "Window Spacing", "Door Width", "Door Height", "Seed")
     W, D = i["Width"], i["Depth"]
-    with g.frame("Side s and storey k from the index; the side's outward normal"):
-        pts = g.node("GeometryNodePoints", Count=mul(g, i["Storeys"], 4.0))["Points"]
-        idx = g.node("GeometryNodeInputIndex")["Index"]
-        s = g.math("FLOORED_MODULO", idx, 4.0)
-        k = g.math("FLOOR", div(g, idx, 4.0))
-        theta = mul(g, s, -math.pi / 2)
-        nx = g.math("ROUND", mul(g, g.math("SINE", theta), -1.0))
-        ny = g.math("ROUND", g.math("COSINE", theta))
-    with g.frame("Face centre and length: the front steps out k x Jetty, the sides grow with it"):
+    with g.frame("Storey boxes: storey k spans x +-W/2, y from -D to its jettied front k x Jetty, zb..z1"):
+        boxes = g.node("GeometryNodePoints", Count=i["Storeys"])["Points"]
+        k = g.node("GeometryNodeInputIndex")["Index"]
         front = mul(g, k, i["Jetty"])
-        length = add(g, mul(g, g.math("ABSOLUTE", ny), W), mul(g, g.math("ABSOLUTE", nx), add(g, D, front)))
-        cx = mul(g, nx, half(g, W))
-        cy = add(g, half(g, sub(g, front, D)), mul(g, ny, half(g, add(g, front, D))))
+        zb = mul(g, g.math("MULTIPLY_ADD", sub(g, k, 1.0), i["Floor Height"], i["Ground Floor Height"]),
+                 cmp(g, k, 0.5))
+        z1 = g.math("MULTIPLY_ADD", k, i["Floor Height"], i["Ground Floor Height"])
+        boxes = g.node("GeometryNodeSetPosition", Geometry=boxes, Position=g.combine(
+            0.0, half(g, sub(g, front, D)), half(g, add(g, zb, z1))))["Geometry"]
+        boxes = store(g, boxes, "f_storey", k, "INT")
+        size = g.combine(W, add(g, D, front), sub(g, z1, zb))
+        boxes = g.node("GeometryNodeInstanceOnPoints", Points=boxes, Scale=size,
+                       Instance=g.node("GeometryNodeMeshCube", Size=(1.0, 1.0, 1.0))["Mesh"])["Instances"]
+        boxes = g.node("GeometryNodeRealizeInstances", Geometry=boxes)["Geometry"]
+    with g.frame("NK Facade Frame: a point per wall; side s from its outward axis; order by 4 k + s"):
+        pts = g.group(facade_frame(), Mesh=boxes)["Points"]
+        out_y = g.node("FunctionNodeRotateVector", Vector=(0.0, 1.0, 0.0),
+                       Rotation=attr(g, "nk_rot", "QUATERNION"))["Vector"]
+        oy = g.separate(out_y)
+        theta = g.math("ARCTAN2", mul(g, oy["X"], -1.0), oy["Y"])
+        s = g.math("FLOORED_MODULO", g.math("ROUND", div(g, theta, -math.pi / 2)), 4.0)
+        k = attr(g, "f_storey", "INT")
+        pts = store(g, pts, "f_side", s, "INT")
+        pts = g.node("GeometryNodeSortElements", props={"domain": "POINT"}, Geometry=pts, **{
+            "Sort Weight": g.math("MULTIPLY_ADD", k, 4.0, attr(g, "f_side", "INT"))})["Geometry"]
+        p = g.separate(g.node("GeometryNodeInputPosition"))
+        length = g.separate(attr(g, "nk_size", "FLOAT_VECTOR"))["X"]
+        cx, cy = p["X"], p["Y"]
     with g.frame("Floor heights: base f_zb (0 on the ground) and top f_z1"):
         zb = mul(g, g.math("MULTIPLY_ADD", sub(g, k, 1.0), i["Floor Height"], i["Ground Floor Height"]),
                  cmp(g, k, 0.5))
@@ -351,15 +369,17 @@ def facades():
                        add(g, 1.0, g.math("FLOOR", mul(g, r, sub(g, n, 2.0)))))
         du = sub(g, mul(g, add(g, dslot, 0.5), slot), half(g, length))
     with g.frame("Store the facade frame and its numbers"):
-        for name, value, dt in (("f_side", s, "INT"), ("f_storey", k, "INT"), ("f_len", length, "FLOAT"),
+        for name, value, dt in (("f_len", length, "FLOAT"),
                                 ("f_zb", zb, "FLOAT"), ("f_z1", z1, "FLOAT"), ("f_n", n, "INT"),
                                 ("f_slot", slot, "FLOAT"), ("f_ww", ww, "FLOAT"), ("f_wh", wh, "FLOAT"),
                                 ("f_wz", wz, "FLOAT"), ("f_dslot", dslot, "INT"), ("f_du", du, "FLOAT"),
                                 ("f_dw", mn(g, i["Door Width"], sub(g, slot, 0.35)), "FLOAT"),
                                 ("f_dh", mn(g, i["Door Height"], sub(g, i["Ground Floor Height"], 0.4)), "FLOAT"),
                                 ("f_centre", g.combine(cx, cy, 0.0), "FLOAT_VECTOR"),
-                                ("f_rot", euler(g, 0.0, 0.0, theta), "QUATERNION")):
+                                ("f_rot", attr(g, "nk_rot", "QUATERNION"), "QUATERNION")):
             pts = store(g, pts, name, value, dt)
+        pts = g.node("GeometryNodeRemoveAttribute", Geometry=pts, Name="nk_*",
+                     **{"Pattern Mode": "Wildcard"})["Geometry"]
     g.output("Facades", "GEOMETRY", pts, desc="One point per wall face and storey with the f_* attributes")
     return g.finish()
 

@@ -479,3 +479,60 @@ def foliage_mound():
         bi = _switch(g, "GEOMETRY", _cmp(g, "GREATER_THAN", bd, 0.0), None, bi)
     g.output("Geometry", "GEOMETRY", _join(g, base, li, bi), desc="Mound, leaf and blossom instances")
     return g.finish()
+
+
+@nodegroup("NK Grass Tuft", tags=["plant", "grass", "tuft", "blades", "meadow"],
+           use="grass tufts in meadows and lawns, reeds, sedges, rushes, tussocks at fence posts, weeds in cracks, "
+               "hair-like fibre bunches")
+def grass_tuft():
+    """A tuft of curved grass blades rooted on a small disc, leaning outwards, with a 0..1 root-to-tip attribute.
+
+    Blade i (of n) is an NK Leaf stood up on +Z, rooted at radius Radius sqrt((i + 1/2) / n) and the golden angle
+    i x 137.5 degrees (plus jitter), leaning outwards by Spread x U(0.3, 1) and curling over outwards. Its length is
+    Height x U(Height Min, 1). The realized mesh stores nk_tip (FLOAT, 0 at the root, 1 at the tip: a colour
+    gradient for NK Root Tip Gradient) and nk_rand per blade (a realized attribute wins over an instance's
+    nk_rand when the tuft is scattered and realized again).
+    """
+    lf = leaf()
+    g = Graph("NK Grass Tuft", description=" ".join(grass_tuft.__doc__.strip().split("\n\n")[0].split()))
+    n = g.input("Blades", "INT", 24, min=1, max=1000, desc="Blades in the tuft")
+    h = g.input("Height", "FLOAT", 0.35, min=0.0, max=100.0, subtype="DISTANCE", desc="Tallest blade length")
+    hmin = g.input("Height Min", "FLOAT", 0.55, min=0.0, max=1.0, subtype="FACTOR",
+                   desc="Shortest blade as a share of Height")
+    rad = g.input("Radius", "FLOAT", 0.03, min=0.0, max=100.0, subtype="DISTANCE",
+                  desc="Roots spread over a disc of this radius (0: a fan from one point)")
+    spread = g.input("Spread", "FLOAT", 0.4, min=0.0, max=1.5, subtype="ANGLE", desc="Largest outward lean")
+    width = g.input("Blade Width", "FLOAT", 0.06, min=0.005, max=1.0, subtype="FACTOR", panel="Blade",
+                    desc="Blade width as a share of its length")
+    curl = g.input("Curl", "FLOAT", 0.4, min=-2.0, max=2.0, panel="Blade",
+                   desc="How far the tip arches over, as a share of the length (outwards)")
+    fold = g.input("Fold", "FLOAT", 0.4, min=-2.0, max=2.0, panel="Blade", desc="V-fold along the midrib")
+    res = g.input("Resolution", "INT", 5, min=2, max=64, panel="Blade", desc="Segments along each blade")
+    seed = g.input("Seed", "INT", 0, min=0, max=100000, desc="Random seed")
+    with g.frame("One blade of length 1 along +X with nk_tip = X (0 root, 1 tip)"):
+        blade = g.group(lf, Length=1.0, Width=width, Curl=curl, Fold=fold, Resolution=res,
+                        **{"Widest At": 0.2})["Mesh"]
+        blade = _store(g, blade, "nk_tip", g.math("MINIMUM", g.math("MAXIMUM", g.separate(
+            g.node("GeometryNodeInputPosition"))["X"], 0.0), 1.0))
+    with g.frame("Roots on a sunflower disc; lean out along the root's azimuth"):
+        pts = g.node("GeometryNodePoints", Count=n)["Points"]
+        idx = g.node("GeometryNodeInputIndex")["Index"]
+
+        def rnd(lo, hi, k):
+            return g.node("FunctionNodeRandomValue", props={"data_type": "FLOAT"}, Min=lo, Max=hi, ID=idx,
+                          Seed=g.math("ADD", seed, float(k)))["Value"]
+        phi = g.math("MULTIPLY_ADD", idx, 2.3999632, rnd(-0.4, 0.4, 1), label="golden angle + jitter")
+        rho = g.math("MULTIPLY", rad, g.math("SQRT", g.math("DIVIDE", g.math("ADD", idx, 0.5),
+                                                             g.math("MAXIMUM", n, 1.0))))
+        root = g.combine(g.math("MULTIPLY", rho, g.math("COSINE", phi)), g.math("MULTIPLY", rho, g.math("SINE", phi)))
+        pts = g.node("GeometryNodeSetPosition", Geometry=pts, Position=root)["Geometry"]
+        tilt = g.math("MULTIPLY", rnd(0.3, 1.0, 2), spread)
+        rot = g.node("FunctionNodeEulerToRotation", Euler=g.combine(0.0, g.math("SUBTRACT", tilt, math.pi / 2), phi))
+        length = g.math("MULTIPLY", h, rnd(hmin, 1.0, 3))
+        pts = _store(g, pts, "nk_rand", rnd(0.0, 1.0, 4))
+    with g.frame("Instance a blade per root and realize"):
+        ins = g.node("GeometryNodeInstanceOnPoints", Points=pts, Instance=blade, Rotation=rot["Rotation"],
+                     Scale=length)["Instances"]
+        out = g.node("GeometryNodeRealizeInstances", Geometry=ins)["Geometry"]
+    g.output("Mesh", "GEOMETRY", out, desc="The tuft, realized, with nk_tip and nk_rand per blade")
+    return g.finish()

@@ -3,7 +3,7 @@ import numpy as np
 import bpy
 import nkt
 from nodekit.graph import Graph
-from library.scatter import scatter_on_surface, scatter_along_curve, clumps
+from library.scatter import scatter_on_surface, scatter_along_curve, clumps, facade_frame
 
 
 def _out(tree, inputs, output="Points", names=(), points=True):
@@ -95,6 +95,23 @@ def test_surface_alignment_and_scale():
     assert nkt.close(_quat_z(out["nk_rot"]), (0, 0, 1), 1e-4)
 
 
+def test_empty_scatter_is_warning_free():
+    """Density 0, an all-zero Mask Attribute, Poisson at Density 0 and Clump Density 0 give empty outputs and no
+    node warnings (the runner fails a test on any warning)."""
+    grid = nkt.grid(size=4.0, subdivisions=4)
+    grid.data.attributes.new("zero", "FLOAT", "POINT")
+    cases = [(scatter_on_surface(), {"Surface": grid, "Instance": _vertex(), "Density": 0.0}),
+             (scatter_on_surface(), {"Surface": grid, "Instance": _vertex(), "Density": 20.0,
+                                     "Mask Attribute": "zero"}),
+             (scatter_on_surface(), {"Surface": grid, "Instance": _vertex(), "Density": 0.0, "Min Distance": 0.3}),
+             (clumps(), {"Surface": grid, "Instance": _vertex(), "Clump Density": 0.0})]
+    for tree, inputs in cases:
+        ob = nkt.evaluate(tree, inputs)
+        assert nkt.attrs(ob)["_count"] == 0 and not nkt.warnings(ob), (inputs, nkt.warnings(ob))
+        for out in ("Points", "Instances"):
+            assert _out(tree, inputs, output=out, points=out == "Points")["_count"] == 0
+
+
 # ---- NK Scatter Along Curve ----------------------------------------------------------------------------------
 def test_along_curve_follows_frame():
     """Count floor(L/Spacing)+1 per side; Follow Curve puts instance +X along the curve, off keeps world X."""
@@ -137,3 +154,39 @@ def test_clumps_snap_to_curved_surface():
     out = _out(clumps(), {"Surface": sphere, "Clump Density": 0.3, "Clump Radius": 1.0})
     r = np.linalg.norm(out["position"], axis=1)
     assert out["_count"] > 50 and r.max() <= 3.0 + 1e-4 and r.min() > 2.9, (r.min(), r.max())
+
+
+# ---- NK Facade Frame -----------------------------------------------------------------------------------------
+def _quat_axes(q):
+    w, x, y, z = q.T
+    X = np.stack([1 - 2 * (y * y + z * z), 2 * (x * y + w * z), 2 * (x * z - w * y)], axis=1)
+    Y = np.stack([2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x)], axis=1)
+    return X, Y, _quat_z(q)
+
+
+def test_facade_frame_on_a_rotated_box():
+    """A 6 x 4 x 3 box turned 30 degrees: four points at the wall centres, +Y out of each wall, +Z up, +X along
+    it, sizes (6 or 4, 0, 3); roof and floor are not walls. A tilted (gable) face beyond Max Tilt is skipped."""
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(1.0, 2.0, 1.5), rotation=(0, 0, math.radians(30)),
+                                    scale=(6.0, 4.0, 3.0))
+    box = bpy.context.object
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    out = _out(facade_frame(), {"Mesh": box}, names=["nk_rot", "nk_size", "nk_face"])
+    assert out["_count"] == 4, out["_count"]
+    X, Y, Z = _quat_axes(out["nk_rot"])
+    c = np.array([1.0, 2.0, 1.5])
+    rel = out["position"] - c
+    assert nkt.close(Z, (0, 0, 1), 1e-4) and nkt.close(rel[:, 2], 0.0, 1e-4)
+    out_dir = rel / np.linalg.norm(rel, axis=1)[:, None]
+    assert nkt.close(np.sum(Y * out_dir, axis=1), 1.0, 1e-4)                 # +Y points out of the box
+    assert nkt.close(np.cross(Y, Z), X, 1e-4)
+    w, h = out["nk_size"][:, 0], out["nk_size"][:, 2]
+    dist = np.linalg.norm(rel[:, :2], axis=1)                                # 2 from the long walls, 3 from the short
+    assert nkt.close(h, 3.0, 1e-4) and nkt.close(out["nk_size"][:, 1], 0.0)
+    assert nkt.close(np.sort(w), [4, 4, 6, 6], 1e-4) and nkt.close(w[np.isclose(dist, 2.0, atol=1e-3)], 6.0, 1e-4)
+    me = bpy.data.meshes.new("NKT Lean")                                     # a quad leaning 40 degrees: not a wall
+    me.from_pydata([(0, 0, 0), (2, 0, 0), (2, 0.84, 1), (0, 0.84, 1)], [], [(0, 1, 2, 3)])
+    lean = bpy.data.objects.new("NKT Lean", me)
+    bpy.context.scene.collection.objects.link(lean)
+    assert _out(facade_frame(), {"Mesh": lean})["_count"] == 0
+    assert _out(facade_frame(), {"Mesh": lean, "Max Tilt": math.radians(45)})["_count"] == 1

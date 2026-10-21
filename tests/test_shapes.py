@@ -3,7 +3,7 @@ import bpy
 import nkt
 from nodekit.graph import Graph
 from library.shapes import (rounded_box, chamfer_box, chamfer_boxes, rod, ring, profile_revolve, leaf, blossom,
-                            foliage_mound)
+                            foliage_mound, grass_tuft)
 
 
 def _pos(tree, inputs=None):
@@ -187,3 +187,24 @@ def test_foliage_leaf_count_follows_density():
                                         "Show Mound": False, "Blossom Size": 0.05})
     p = nkt.attrs(ob)["position"]
     assert len(p) > 0 and p[:, 2].min() > -0.35, p[:, 2].min()               # nothing on the underside
+
+
+def test_grass_tuft_blades_tip_and_spread():
+    """Blades x leaf vertices; nk_tip runs 0 at the roots (on the Radius disc, z = 0) to 1 at the tips, which are
+    up within Height and lean outwards; blade lengths stay in [Height Min, 1] x Height."""
+    n, H, R = 20, 0.4, 0.05
+    ob = nkt.evaluate(grass_tuft(), {"Blades": n, "Height": H, "Radius": R, "Spread": 0.5, "Curl": 0.2,
+                                     "Height Min": 0.5, "Resolution": 6, "Seed": 3})
+    a = nkt.attrs(ob, ["position", "nk_tip", "nk_rand"])
+    one = nkt.attrs(nkt.evaluate(leaf(), {"Length": 1.0, "Width": 0.06, "Resolution": 6, "Widest At": 0.2}))
+    assert a["_count"] == n * one["_count"], (a["_count"], one["_count"])
+    p, t = a["position"], a["nk_tip"]
+    assert t.min() >= 0.0 and t.max() <= 1.0 + 1e-6
+    roots, tips = p[t < 1e-6], p[t > 1 - 1e-6]
+    assert len(roots) >= n and len(tips) >= n
+    assert nkt.close(roots[:, 2], 0.0, 1e-5) and np.linalg.norm(roots[:, :2], axis=1).max() <= R + 1e-3
+    assert tips[:, 2].min() > 0.2 * H and np.linalg.norm(tips, axis=1).max() <= H + R + 1e-3
+    lean = np.linalg.norm(tips[:, :2], axis=1)
+    assert lean.min() > np.linalg.norm(roots[:, :2], axis=1).max() * 0.5 and lean.mean() > 0.05
+    assert len(np.unique(np.round(a["nk_rand"], 6))) == n                    # one random value per blade
+    assert np.all((p[:, 2] >= -1e-4))                                        # nothing below the ground

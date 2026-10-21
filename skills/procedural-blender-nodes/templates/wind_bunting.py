@@ -5,8 +5,8 @@
 
 Technique: curve-space placement plus analytic motion. NK Curve Samples puts a pair of poles every Spacing along
 the Path (both sides); each pair carries one rope. A rope point at u (0..1) is the chord point lowered by a
-parabolic sag, and the sag vector is rotated about the chord by the rope's swing angle ("Wind Bunting Rope
-Point"), so rope, pennants and lanterns all hang off the same closed form. The motion is a function of Time only:
+catenary sag, and the sag vector is rotated about the chord by the rope's swing angle (NK Catenary Point), so
+rope, pennants and lanterns all hang off the same closed form. The motion is a function of Time only:
 NK Wind Gust gives a gust that travels down the path, NK Pendulum Sway turns it into the rope's lean and ring,
 NK Damped Spring adds each pennant's lagging flutter on top, and the lanterns swing as heavier pendulums on a
 lagged gust (NK Wind Gust Lag). Lantern paper glows with NK Glow Glass, flickered per lantern by NK Flicker.
@@ -26,10 +26,10 @@ import bpy
 from nodekit import inspect
 from nodekit import scene as S
 from nodekit.graph import Graph, once
-from library.curve import curve_samples, curve_ribbon
+from library.curve import curve_samples, curve_ribbon, catenary_point
 from library.shapes import rod, profile_revolve
 from library.motion import wind_gust, pendulum_sway, damped_spring, flicker
-from library.materials import make_material, wood_grain, attribute_tint, glow_glass, stone, lin
+from library.materials import make_material, wood_grain, attribute_tint, glow_glass, stone, store_local_coords, lin
 
 NAME = "Wind Bunting"
 TAU = 2 * math.pi
@@ -66,36 +66,6 @@ def join(g, *geos):
 
 
 # ---- template-local groups -----------------------------------------------------------------------------------
-@once
-def build_rope_point():
-    """A point on a sagging, swinging rope: chord point, lowered by a parabola, swung about the chord."""
-    g = Graph("Wind Bunting Rope Point",
-              description="Position and tangent at U (0..1) along a rope hung from Start to End: the chord point "
-                          "lowered by Sag x 4U(1-U), with that drop rotated about the chord by Swing (radians), so "
-                          "the whole rope swings like a pendulum hinged on its two anchors")
-    a = g.input("Start", "VECTOR", (0.0, 0.0, 0.0), subtype="TRANSLATION", desc="Anchor at U = 0 (field)")
-    b = g.input("End", "VECTOR", (4.0, 0.0, 0.0), subtype="TRANSLATION", desc="Anchor at U = 1 (field)")
-    u = g.input("U", "FLOAT", 0.5, min=0.0, max=1.0, subtype="FACTOR", desc="Position along the rope (field)")
-    sag = g.input("Sag", "FLOAT", 0.5, min=0.0, max=100.0, subtype="DISTANCE", desc="Drop at mid-rope (field)")
-    swing = g.input("Swing", "FLOAT", 0.0, min=-3.0, max=3.0, subtype="ANGLE",
-                    desc="Rotation of the hanging rope about its chord (field)")
-    with g.frame("Chord point and parabolic drop 4U(1-U) Sag, and its slope along U"):
-        chord = g.vmath("SUBTRACT", b, a)
-        lin_p = g.vmath("ADD", a, g.vmath("SCALE", chord, scale=u))
-        f = g.math("MULTIPLY", g.math("MULTIPLY", u, g.math("SUBTRACT", 1.0, u)), 4.0)
-        drop = g.combine(0.0, 0.0, g.math("MULTIPLY", f, g.math("MULTIPLY", sag, -1.0)))
-        slope = g.combine(0.0, 0.0, g.math("MULTIPLY", g.math("MULTIPLY_ADD", u, 8.0, -4.0), sag))
-    with g.frame("Swing: rotate the drop (and its slope) about the chord"):
-        rot = g.node("FunctionNodeAxisAngleToRotation", Axis=g.vmath("NORMALIZE", chord), Angle=swing)["Rotation"]
-        pos = g.vmath("ADD", lin_p, g.node("FunctionNodeRotateVector", Vector=drop, Rotation=rot))
-        tan = g.vmath("NORMALIZE", g.vmath("ADD", chord, g.node("FunctionNodeRotateVector", Vector=slope,
-                                                                   Rotation=rot)))
-    g.output("Position", "VECTOR", pos, desc="Point on the rope")
-    g.output("Tangent", "VECTOR", tan, desc="Unit tangent along the rope (Start to End)")
-    g.output("Swing Rotation", "ROTATION", rot, desc="The swing as a rotation about the chord")
-    return g.finish()
-
-
 @once
 def build_pennant():
     """A triangular pennant hanging from its top edge (along X) down -Z, with a slight cup."""
@@ -158,7 +128,7 @@ def build_lantern():
 
 # ---- the top group -------------------------------------------------------------------------------------------
 def build_bunting(mats):
-    rp, pennant, lantern = build_rope_point(), build_pennant(), build_lantern()
+    rp, pennant, lantern = catenary_point(), build_pennant(), build_lantern()
     g = Graph(NAME, modifier=True,
               description="Bunting across any path: pairs of poles every Spacing along the Path, a sagging rope "
                           "between each pair, triangle pennants every Pennant Spacing and paper lanterns, all "
@@ -260,11 +230,11 @@ def build_bunting(mats):
         strings = store(g, strings, "wb_gust", gust["Gust"])
 
     def on_rope(geo, u):
-        """Rope Point at U for every element of geo (which carries wb_a, wb_b, wb_sag, wb_swing)."""
+        """NK Catenary Point at U for every element of geo (which carries wb_a, wb_b, wb_sag, wb_swing)."""
         return g.group(rp, Start=attr(g, "wb_a", "FLOAT_VECTOR"), End=attr(g, "wb_b", "FLOAT_VECTOR"), U=u,
                        Sag=attr(g, "wb_sag"), Swing=attr(g, "wb_swing"))
 
-    with g.frame("Ropes: Rope Point at 24 values of U per string, joined into curves and swept"):
+    with g.frame("Ropes: NK Catenary Point at 24 values of U per string, joined into curves and swept"):
         dup = g.node("GeometryNodeDuplicateElements", props={"domain": "POINT"}, Geometry=strings,
                      Amount=ROPE_POINTS)
         u = g.math("DIVIDE", dup["Duplicate Index"], ROPE_POINTS - 1.0)
@@ -336,7 +306,7 @@ def build_bunting(mats):
                        Scale=g.math("MULTIPLY", l_size, rand(g, 0.85, 1.15, seed, 7, lid)))["Instances"]
     with g.frame("Pole meshes: a wooden rod and a ball finial on every pole, leaning a little"):
         pole = g.group(rod(), Start=(0.0, 0.0, 0.0), End=(0.0, 0.0, 1.0), Radius=pole_r, Resolution=12)["Mesh"]
-        pole = store(g, pole, "nk_grain", g.node("GeometryNodeInputPosition"), "FLOAT_VECTOR")  # grain in pole space
+        pole = g.group(store_local_coords(), Geometry=pole)["Geometry"]       # nk_local: grain in pole space
         ball = g.node("GeometryNodeMeshUVSphere", Segments=16, Rings=8,
                       Radius=g.math("MULTIPLY", pole_r, 1.5))["Mesh"]
         pmesh = g.node("GeometryNodeInstanceOnPoints", Points=poles, Instance=pole, Scale=g.combine(1.0, 1.0, attr(g, "wb_h")),
@@ -351,10 +321,8 @@ def build_bunting(mats):
                        Material=mats["cobble"], **{"Segments Across": 2})["Mesh"]
         lane = g.node("GeometryNodeSwitch", props={"input_type": "GEOMETRY"}, Switch=show_lane,
                       **{"True": lane})["Output"]
-    with g.frame("Join and realize (shaders read nk_color, nk_rand, nk_glow); shift each pole's grain by nk_rand"):
+    with g.frame("Join and realize (shaders read nk_color, nk_rand, nk_glow, nk_local)"):
         out = g.node("GeometryNodeRealizeInstances", Geometry=join(g, ropes, flags, lamps, wood, lane))["Geometry"]
-        shift = g.vmath("SCALE", (3.1, 1.7, 5.3), scale=g.math("MULTIPLY", attr(g, "nk_rand"), 10.0))
-        out = store(g, out, "nk_grain", g.vmath("ADD", attr(g, "nk_grain", "FLOAT_VECTOR"), shift), "FLOAT_VECTOR")
     g.output("Geometry", "GEOMETRY", out, desc="Poles, ropes, pennants, lanterns and lane")
     tree = g.finish()
     tree.interface.items_tree["Palette"].default_value = "Festival"
@@ -374,7 +342,7 @@ def materials():
         "rope": make_material("Wind Bunting Rope", attribute_tint, **{
             "Base Color": lin("#D8CBB0"), "Attribute Weight": 0.0, "Roughness": 0.9}),
         "wood": make_material("Wind Bunting Wood", wood_grain, **{
-            "Vector": "attr:nk_grain", "Light Color": lin("#7E5C40"), "Dark Color": lin("#4A3222"),
+            "Light Color": lin("#7E5C40"), "Dark Color": lin("#4A3222"), "Piece Shift": 53.0,
             "Ring Scale": 50.0, "Distortion": 1.5, "Roughness": 0.7}),
         "cobble": make_material("Wind Bunting Cobble", stone, **{"Stone Scale": 6.0, "Color": lin("#A08C76")}),
     }

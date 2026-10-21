@@ -2,7 +2,7 @@ import numpy as np
 import bpy
 import nkt
 from nodekit.graph import Graph
-from library.curve import curve_frame, curve_bend, curve_samples, curve_parcels, curve_ribbon
+from library.curve import curve_frame, curve_bend, curve_samples, curve_parcels, curve_ribbon, catenary_point
 
 
 # ---- local helpers -------------------------------------------------------------------------------------------
@@ -146,6 +146,73 @@ def test_samples_jitter_stays_on_curve():
     s, i = out["nk_s"], out["nk_index"]
     assert np.all(np.abs(s - i) <= 0.5 + 1e-5) and s.min() >= 0 and s.max() <= _length(path) + 1e-3
     assert np.std(s - i) > 0.1
+
+
+def test_samples_closed_curve_has_no_seam_duplicate():
+    """On a cyclic bezier circle the point at s = L (the seam, = s 0) is left out: L / Spacing = 8 gives 8 points,
+    evenly spaced all the way round; 7.5 gives 8; an open curve of the same length still gets floor + 1."""
+    bpy.ops.curve.primitive_bezier_circle_add(radius=5.0)
+    circle = bpy.context.object
+    L = _length(circle)
+    for k, want in ((8.0, 8), (7.5, 8), (3.0, 3)):
+        out = _points(curve_samples(), {"Curve": circle, "Spacing": L / k}, names=["nk_s"])
+        assert out["_count"] == want, (k, out["_count"])
+        p = out["position"]
+        d = np.linalg.norm(p[:, None] - p[None], axis=2) + np.eye(len(p)) * 1e9
+        assert d.min() > 0.5 * (L / k) * 0.9, (k, d.min())                 # no point sits on another
+    out = _points(curve_samples(), {"Curve": circle, "Spacing": L / 8, "Both Sides": True, "Offset": 0.5})
+    assert out["_count"] == 16
+    path = nkt.poly([(0, 0, 0), (0, 16.0, 0)])
+    assert _points(curve_samples(), {"Curve": path, "Spacing": 2.0})["_count"] == 9
+
+
+# ---- NK Catenary Point ---------------------------------------------------------------------------------------
+def _catenary_drop(u, sag, span):
+    """Reference catenary drop below the chord: solve sag / span = (cosh h - 1) / (2h) by bisection."""
+    r, lo, hi = sag / span, 1e-9, 60.0
+    for _ in range(200):
+        m = 0.5 * (lo + hi)
+        lo, hi = (lo, m) if np.cosh(m) - 1 - 2 * r * m > 0 else (m, hi)
+    h = 0.5 * (lo + hi)
+    return sag * (np.cosh(h) - np.cosh(h * (2 * u - 1))) / (np.cosh(h) - 1)
+
+
+def test_catenary_point_matches_closed_form():
+    """Ends on the anchors, drop Sag at mid-rope, the catenary shape for shallow to slack ropes, the parabola
+    4u(1-u) with Catenary off; the tangent is the normalised derivative of the position."""
+    a, b = np.array([1.0, -2.0, 3.0]), np.array([5.0, 1.0, 2.0])
+    u = np.linspace(0.0, 1.0, 41)
+    span = np.linalg.norm(b - a)
+    for sag in (0.05, 0.6, 2.5, 8.0):
+        out = nkt.field(catenary_point(), {"Start": tuple(a), "End": tuple(b), "Sag": sag},
+                        per_point={"U": u}, outputs={"Position": "VECTOR", "Tangent": "VECTOR", "Drop": "FLOAT"})
+        want = a + np.outer(u, b - a) - np.outer(_catenary_drop(u, sag, span), (0, 0, 1))
+        assert nkt.close(out["Position"], want, 2e-4 * max(1.0, sag)), (sag, np.abs(out["Position"] - want).max())
+        assert nkt.close(out["Drop"][[0, 20, 40]], [0.0, sag, 0.0], 1e-4 * max(1.0, sag))
+        fd = np.gradient(out["Position"], u, axis=0)
+        fd /= np.linalg.norm(fd, axis=1)[:, None]
+        assert nkt.close(out["Tangent"][1:-1], fd[1:-1], 5e-3), (sag, np.abs(out["Tangent"] - fd)[1:-1].max())
+        assert nkt.close(np.linalg.norm(out["Tangent"], axis=1), 1.0, 1e-4)
+    par = nkt.field(catenary_point(), {"Start": tuple(a), "End": tuple(b), "Sag": 2.5, "Catenary": False},
+                    per_point={"U": u}, outputs={"Position": "VECTOR"})["Position"]
+    want = a + np.outer(u, b - a) - np.outer(4 * u * (1 - u) * 2.5, (0, 0, 1))
+    assert nkt.close(par, want, 2e-4)
+    deep = _catenary_drop(np.array([0.25]), 2.5, span)[0]                 # slack catenary: fuller than a parabola
+    assert deep > 0.75 * 2.5 + 0.01, deep
+
+
+def test_catenary_point_swings_about_the_chord():
+    """Swing rotates the drop about the chord: distance from the chord is kept, angle from straight down = Swing."""
+    a, b = np.array([0.0, 0.0, 2.0]), np.array([4.0, 0.0, 2.0])
+    u = np.linspace(0.05, 0.95, 19)
+    rest = nkt.field(catenary_point(), {"Start": tuple(a), "End": tuple(b), "Sag": 0.7},
+                     per_point={"U": u}, outputs={"Position": "VECTOR"})["Position"]
+    sw = nkt.field(catenary_point(), {"Start": tuple(a), "End": tuple(b), "Sag": 0.7, "Swing": 0.4},
+                   per_point={"U": u}, outputs={"Position": "VECTOR"})["Position"]
+    d_rest, d_sw = rest - (a + np.outer(u, b - a)), sw - (a + np.outer(u, b - a))
+    assert nkt.close(np.linalg.norm(d_rest, axis=1), np.linalg.norm(d_sw, axis=1), 1e-4)
+    cosang = np.sum(d_rest * d_sw, axis=1) / np.linalg.norm(d_rest, axis=1) ** 2
+    assert nkt.close(cosang, np.cos(0.4), 1e-4) and nkt.close(d_sw[:, 0], 0.0, 1e-4)
 
 
 # ---- NK Curve Parcels ----------------------------------------------------------------------------------------

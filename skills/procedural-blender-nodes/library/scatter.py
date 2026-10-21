@@ -59,6 +59,15 @@ def _distribute(g, mesh, sel, density, weight, min_dist, seed):
     return _switch(g, "GEOMETRY", use_poi, pts, ppts)
 
 
+def _if_any(g, pts, *outputs):
+    """Pass ``outputs`` through only when ``pts`` has points; otherwise output empty geometry. The Switch is lazy,
+    so on an empty distribution (Density 0, everything masked) nothing downstream is evaluated and no node reads
+    an attribute that the empty point cloud cannot carry (no "Attribute does not exist" warnings)."""
+    n = g.node("GeometryNodeAttributeDomainSize", props={"component": "POINTCLOUD"}, Geometry=pts)["Point Count"]
+    any_ = g.node("FunctionNodeCompare", props={"data_type": "INT", "operation": "GREATER_THAN"}, A=n, B=0)["Result"]
+    return [_switch(g, "GEOMETRY", any_, None, o) for o in outputs]
+
+
 def _orient(g, normal, align, spin_max, tilt, seed, k, ident=None):
     """Random spin about Z, Z blended from world up to `normal` by `align`, then a random local tilt."""
     spin = g.node("FunctionNodeEulerToRotation", Euler=g.combine(0.0, 0.0, _rand(g, 0.0, spin_max, seed, k, ident)))
@@ -129,7 +138,9 @@ def scatter_on_surface():
         pts = _distribute(g, mesh, flat, dens, weight, mind, seed)
     with g.frame("Orientation, scale and nk_rand per point; instance"):
         rot = _orient(g, _attr(g, "nk_normal", "FLOAT_VECTOR"), align, spin, tilt, seed, 1)
-        pts, ins = _instance(g, pts, inst, rot, _rand(g, smin, smax, seed, 5), _rand(g, 0.0, 1.0, seed, 6))
+        out_pts, ins = _instance(g, pts, inst, rot, _rand(g, smin, smax, seed, 5), _rand(g, 0.0, 1.0, seed, 6))
+    with g.frame("Empty distribution (Density 0, all masked): output nothing, evaluate nothing"):
+        ins, pts = _if_any(g, pts, ins, out_pts)
     g.output("Instances", "GEOMETRY", ins, desc="One instance per point (not realized)")
     g.output("Points", "GEOMETRY", pts, desc="The points, with nk_rot, nk_scale and nk_rand")
     return g.finish()
@@ -214,6 +225,7 @@ def clumps():
         centres = _distribute(g, mesh, True, dens, 1.0, mind, seed)
         cidx = g.node("GeometryNodeInputIndex")["Index"]
         centres = _store(g, centres, "nk_clump", cidx, "INT")
+        raw_centres = centres
     with g.frame("Members: duplicate each centre a random number of times"):
         count = _rand(g, nmin, g.math("MAXIMUM", nmin, nmax), seed, 1, cidx, "INT")
         dup = g.node("GeometryNodeDuplicateElements", props={"domain": "POINT"}, Geometry=centres, Amount=count)
@@ -237,7 +249,76 @@ def clumps():
                     g.math("SUBTRACT", 1.0, g.math("MULTIPLY", fall, _attr(g, "nk_dist"))))
         pts, ins = _instance(g, mem, inst, rot, sc, _rand(g, 0.0, 1.0, seed, 8, mid_), drop=("nk_normal", "nk_id"))
         centres = g.node("GeometryNodeRemoveAttribute", Geometry=centres, Name="nk_normal")["Geometry"]
+    with g.frame("No clump centres (density 0, empty surface): output nothing, evaluate nothing"):
+        ins, pts, centres = _if_any(g, raw_centres, ins, pts, centres)
     g.output("Instances", "GEOMETRY", ins, desc="One instance per member (not realized)")
     g.output("Points", "GEOMETRY", pts, desc="Member points with nk_clump, nk_dist, nk_rot, nk_scale, nk_rand")
     g.output("Centres", "GEOMETRY", centres, desc="Clump centre points with nk_clump (their index)")
+    return g.finish()
+
+
+@nodegroup("NK Facade Frame", tags=["placement", "building", "facade", "wall", "points", "frame"],
+           use="windows, doors, shutters, signs, balconies, wall lamps and drainpipes on any building mass; "
+               "posters on kiosks, panels on crates and cabinets")
+def facade_frame():
+    """One point per wall face of a mesh, at the centre of the face's rectangle, with its size and an outward frame.
+
+    A face is a wall when its normal is within Max Tilt of horizontal. The frame (nk_rot) has +Y out of the wall
+    (the horizontal part of the face normal), +Z world up and +X = Y x Z along the wall, so anything modelled
+    with its front facing +Y and its base on Z = 0 lands flat on the wall. nk_size = (width along X, 0, height
+    along Z) is the extent of the face's corners in that frame and the point sits at the centre of that
+    rectangle. nk_face is the face index; the mesh's point and face attributes carry over (face-averaged).
+    """
+    g = Graph("NK Facade Frame", description=" ".join(facade_frame.__doc__.strip().split("\n\n")[0].split()))
+    mesh = g.input("Mesh", "GEOMETRY", desc="Building mass: boxes, extruded footprints, any mesh with walls")
+    sel = g.input("Selection", "BOOL", True, hide_value=True, desc="Which faces may become facades (field)")
+    tilt = g.input("Max Tilt", "FLOAT", 0.26, min=0.0, max=1.5, subtype="ANGLE",
+                   desc="Faces whose normal is within this angle of horizontal count as walls")
+    with g.frame("Per face: horizontal outward normal Y, along-wall X = Y x up, and the face centre"):
+        nrm = g.node("GeometryNodeInputNormal")["Normal"]
+        yh = g.vmath("NORMALIZE", g.vmath("MULTIPLY", nrm, (1.0, 1.0, 0.0)))
+        m = _store(g, mesh, "_nk_ff_y", yh, "FLOAT_VECTOR", "FACE")
+        m = _store(g, m, "_nk_ff_c", g.node("GeometryNodeInputPosition"), "FLOAT_VECTOR", "FACE")
+        nz = g.math("ABSOLUTE", g.separate(nrm)["Z"])
+        wall = g.node("FunctionNodeBooleanMath", props={"operation": "AND"}, Boolean=sel, Boolean_001=_cmp(
+            g, "LESS_EQUAL", nz, g.math("SINE", tilt)))["Boolean"]
+        m = _store(g, m, "_nk_ff_wall", wall, "BOOLEAN", "FACE")
+        m = _store(g, m, "nk_face", g.node("GeometryNodeInputIndex"), "INT", "FACE")
+    with g.frame("Corner extents along X and Z per face (min and max grouped by face)"):
+        y = _attr(g, "_nk_ff_y", "FLOAT_VECTOR")
+        x = g.vmath("CROSS_PRODUCT", y, (0.0, 0.0, 1.0))
+        rel = g.vmath("SUBTRACT", g.node("GeometryNodeInputPosition"), _attr(g, "_nk_ff_c", "FLOAT_VECTOR"))
+        face = g.node("GeometryNodeFaceOfCorner")["Face Index"]
+        for name, val in (("x", g.vmath("DOT_PRODUCT", rel, x)["Value"]), ("z", g.separate(rel)["Z"])):
+            mm = g.node("GeometryNodeFieldMinAndMax", props={"data_type": "FLOAT", "domain": "CORNER"}, Value=val,
+                        **{"Group ID": face})
+            m = _store(g, m, f"_nk_ff_{name}0", mm["Min"], "FLOAT", "CORNER")
+            m = _store(g, m, f"_nk_ff_{name}1", mm["Max"], "FLOAT", "CORNER")
+    with g.frame("A point per wall face at the rectangle's centre; nk_rot and nk_size"):
+        pts = g.node("GeometryNodeMeshToPoints", props={"mode": "FACES"}, Mesh=m,
+                     Selection=_attr(g, "_nk_ff_wall", "BOOLEAN"))["Points"]
+        y = _attr(g, "_nk_ff_y", "FLOAT_VECTOR")
+        x = g.vmath("CROSS_PRODUCT", y, (0.0, 0.0, 1.0))
+        x0, x1, z0, z1 = (_attr(g, f"_nk_ff_{k}") for k in ("x0", "x1", "z0", "z1"))
+        ctr = g.vmath("ADD", g.vmath("ADD", _attr(g, "_nk_ff_c", "FLOAT_VECTOR"), g.vmath(
+            "SCALE", x, scale=g.math("MULTIPLY", g.math("ADD", x0, x1), 0.5))), g.combine(
+            0.0, 0.0, g.math("MULTIPLY", g.math("ADD", z0, z1), 0.5)))
+        pts = g.node("GeometryNodeSetPosition", Geometry=pts, Position=ctr)["Geometry"]
+        rot = g.node("FunctionNodeAxesToRotation", props={"primary_axis": "Y", "secondary_axis": "Z"},
+                     **{"Primary Axis": y, "Secondary Axis": (0.0, 0.0, 1.0)})["Rotation"]
+        pts = _store(g, pts, "nk_rot", rot, "QUATERNION")
+        pts = _store(g, pts, "nk_size", g.combine(g.math("SUBTRACT", x1, x0), 0.0, g.math("SUBTRACT", z1, z0)),
+                     "FLOAT_VECTOR")
+        pts = g.node("GeometryNodeRemoveAttribute", Geometry=pts, Name="_nk_ff_*",
+                     **{"Pattern Mode": "Wildcard"})["Geometry"]
+        cap = g.node("GeometryNodeCaptureAttribute", props={"domain": "POINT"})
+        cap.b.capture_items.new("ROTATION", "Rotation")
+        cap.b.capture_items.new("VECTOR", "Size")
+        g.connect(pts, cap.i("Geometry"))
+        g.connect(_attr(g, "nk_rot", "QUATERNION"), cap.i("Rotation"))
+        g.connect(_attr(g, "nk_size", "FLOAT_VECTOR"), cap.i("Size"))
+    g.output("Points", "GEOMETRY", cap["Geometry"], desc="One point per wall face, with nk_rot, nk_size, nk_face")
+    g.output("Rotation", "ROTATION", cap["Rotation"], desc="Facade frame: +X along the wall, +Y out, +Z up "
+                                                           "(field on Points)")
+    g.output("Size", "VECTOR", cap["Size"], desc="(width, 0, height) of the wall face (field on Points)")
     return g.finish()

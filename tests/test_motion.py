@@ -182,3 +182,54 @@ def test_flicker_bounded_and_smooth():
         assert v.min() >= 3.0 * 0.6 - 1e-5 and v.max() <= 3.0 + 1e-5, (v.min(), v.max())
         assert np.ptp(v) > 0.4
         assert np.max(np.abs(np.diff(v))) < 0.03, np.max(np.abs(np.diff(v)))
+
+
+# ---- Blender behaviour the simulation recipes rely on (references/animation-and-simulation.md) -----------------
+def _sim_counter(skip_first):
+    """A one-point simulation counting steps and summing Delta Time; Skip on dt == 0 when skip_first."""
+    import bpy
+    from nodekit.graph import Graph
+    w = Graph(nkt._name("NKT Sim"), description="simulation zone probe", modifier=True)
+    w.input("Geometry", "GEOMETRY", desc="ignored")
+    zin, zout = w.zone("SIMULATION", [("FLOAT", "Steps"), ("FLOAT", "T"), ("FLOAT", "DT")])
+    w.connect(w.node("GeometryNodePoints", Count=1)["Points"], zin.i("Geometry"))
+    w.connect(zin["Geometry"], zout.i("Geometry"))
+    w.connect(w.math("ADD", zin["Steps"], 1.0), zout.i("Steps"))
+    w.connect(w.math("ADD", zin["T"], zin["Delta Time"]), zout.i("T"))
+    w.connect(zin["Delta Time"], zout.i("DT"))
+    if skip_first:
+        w.connect(w.math("LESS_THAN", zin["Delta Time"], 1e-9), zout.i("Skip"))
+    cur = w.node("GeometryNodePointsToVertices", Points=zout["Geometry"])["Mesh"]
+    for n in ("Steps", "T", "DT"):
+        cur = w.node("GeometryNodeStoreNamedAttribute", props={"data_type": "FLOAT", "domain": "POINT"},
+                     Geometry=cur, Name=n, Value=zout[n])["Geometry"]
+    w.output("Geometry", "GEOMETRY", cur)
+    w.finish()
+    ob = bpy.data.objects.new(w.nt.name, bpy.data.meshes.new(w.nt.name))
+    bpy.context.scene.collection.objects.link(ob)
+    ob.modifiers.new("nkt", "NODES").node_group = w.nt
+    return ob
+
+
+def test_simulation_first_frame_runs_a_zero_dt_step():
+    """Blender 5.2: the start frame already runs one step with Delta Time 0 (so a step counter reads 1 there and
+    the state sums dt exactly); Skip when Delta Time is 0 makes the start frame show the initial state."""
+    import bpy
+    sc = bpy.context.scene
+    sc.render.fps, sc.frame_start = 24, 1
+    ob = _sim_counter(skip_first=False)
+    got = []
+    for f in (1, 2, 3, 4):
+        sc.frame_set(f)
+        a = nkt.attrs(ob, ["Steps", "T", "DT"])
+        got.append((a["Steps"][0], a["T"][0], a["DT"][0]))
+    assert nkt.close([s for s, _, _ in got], [1, 2, 3, 4]), got            # a step on frame 1 too
+    assert nkt.close([d for _, _, d in got], [0, 1 / 24, 1 / 24, 1 / 24], 1e-6), got
+    assert nkt.close([t for _, t, _ in got], [0, 1 / 24, 2 / 24, 3 / 24], 1e-6), got
+    sc.frame_set(1)
+    ob2 = _sim_counter(skip_first=True)
+    steps = []
+    for f in (1, 2, 3):
+        sc.frame_set(f)
+        steps.append(nkt.attrs(ob2, ["Steps"])["Steps"][0])
+    assert nkt.close(steps, [0, 1, 2]), steps                              # initial state on frame 1
