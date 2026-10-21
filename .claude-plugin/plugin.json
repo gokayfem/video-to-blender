@@ -1,0 +1,11 @@
+{
+  "name": "blender-node-skills",
+  "displayName": "Blender Node Skills",
+  "version": "0.1.0",
+  "description": "Procedural Blender node systems skill: build Geometry Nodes, Shader Nodes and compositor graphs from Python with a tested node-group library, templates, checker and validation tools.",
+  "author": { "name": "gokayfem", "url": "https://github.com/gokayfem" },
+  "homepage": "https://github.com/gokayfem/blender-node-skills",
+  "repository": "https://github.com/gokayfem/blender-node-skills",
+  "license": "MIT",
+  "keywords": ["blender", "geometry-nodes", "shader-nodes", "procedural", "bpy", "node-graph", "simulation", "generative"]
+}

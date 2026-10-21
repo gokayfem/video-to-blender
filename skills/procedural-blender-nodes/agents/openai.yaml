@@ -1,0 +1,5 @@
+interface:
+  display_name: "Procedural Blender Nodes"
+  short_description: "Geometry/Shader/compositor node systems built from Python with a tested node-group library"
+  brand_color: "#E87D0D"
+  default_prompt: "Use $procedural-blender-nodes to build a procedural Geometry Nodes effect with artist controls, saved as a .blend by a reproducible build script and validated."

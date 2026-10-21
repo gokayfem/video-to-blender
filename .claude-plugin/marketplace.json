@@ -1,0 +1,14 @@
+{
+  "name": "blender-node-skills",
+  "description": "Procedural Blender node skills for coding agents",
+  "owner": { "name": "gokayfem", "url": "https://github.com/gokayfem" },
+  "plugins": [
+    {
+      "name": "blender-node-skills",
+      "source": "./",
+      "description": "Procedural Blender Geometry/Shader/compositor node systems built from Python, with a tested node-group library",
+      "category": "development",
+      "tags": ["blender", "geometry-nodes", "shader-nodes", "procedural", "bpy"]
+    }
+  ]
+}
