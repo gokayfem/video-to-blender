@@ -1,0 +1,125 @@
+"""Storybook Street: the top-level modifier group. Pick a path curve, get a street.
+
+It reads the path through an Object input, wires the shared cross-section and Seed into every part, drives
+animated parts with Scene Time (the only place that reads it), and forwards every other part input to its own
+panel named "<Part> > <Panel>", so the modifier panel is the artist's control surface while each part group
+stays usable on its own.
+"""
+import importlib
+import os
+from v2n.graph import Graph, SOCKET_TYPES
+
+NAME = "Storybook Street"
+# (module, label, extra outputs consumed elsewhere)
+PARTS = [
+    ("street.groups.road", "Road"),
+    ("street.groups.facades", "Houses"),
+    ("street.groups.props", "Props"),
+    ("street.groups.bunting", "Bunting"),
+    ("street.groups.walker", "Walker"),
+]
+SHARED = ["Street Width", "Curb Width", "Curb Height", "Verge Width"]
+SHARED_SPEC = {
+    "Street Width": (4.0, 1.0, 20.0, "Curb-to-curb width of the cobbled road"),
+    "Curb Width": (0.2, 0.0, 1.0, "Width of the curb stones"),
+    "Curb Height": (0.12, 0.0, 0.5, "Height of the curb above the road"),
+    "Verge Width": (0.8, 0.0, 4.0, "Paved strip and grass between the curb and the house fronts"),
+}
+_TYPE_BY_SOCKET = {v: k for k, v in SOCKET_TYPES.items()}
+
+
+def load_parts():
+    built = []
+    parts = PARTS
+    if os.environ.get("V2N_PARTS"):          # e.g. "street.groups.road:Road,street.groups.walker:Walker"
+        parts = [tuple(x.split(":")) for x in os.environ["V2N_PARTS"].split(",")]
+    for mod, label in parts:
+        try:
+            m = importlib.import_module(mod)
+        except ModuleNotFoundError:
+            continue
+        built.append((label, m.build()))
+    return built
+
+
+def _iface_inputs(ng):
+    for it in ng.interface.items_tree:
+        if it.item_type == "SOCKET" and it.in_out == "INPUT":
+            yield it
+
+
+def build():
+    parts = load_parts()
+    g = Graph(NAME, modifier=True,
+              description="A storybook street generated along any path curve: cobbled road, half-timbered "
+                          "houses, props, bunting and a walker. Every part group can also be used on its own")
+    g.input("Geometry", "GEOMETRY", desc="Ignored; the street is generated from Path", hide_value=True)
+    path = g.input("Path", "OBJECT", desc="The curve the street follows. Draw any curve and pick it here",
+                   panel="Street")
+    seed = g.input("Seed", "INT", 0, desc="Changes every random choice: house widths, colours, props, stones",
+                   panel="Street")
+    shared = {"Seed": seed}
+    for name in SHARED:
+        dv, lo, hi, desc = SHARED_SPEC[name]
+        shared[name] = g.input(name, "FLOAT", dv, min=lo, max=hi, subtype="DISTANCE", desc=desc, panel="Street")
+    tscale = g.input("Time Scale", "FLOAT", 1.0, min=0.0, max=4.0, panel="Street",
+                     desc="Speed of all animation (walk, wind); 0 freezes the street")
+    toffset = g.input("Time Offset", "FLOAT", 0.0, subtype="TIME_ABSOLUTE", panel="Street",
+                      desc="Seconds added to scene time, to choose a different moment")
+    shows = {label: g.input(f"Show {label}", "BOOL", True, panel="Visibility", desc=f"Generate the {label.lower()}")
+             for label, _ in parts}
+
+    with g.frame("Path curve and animation clock"):
+        info = g.node("GeometryNodeObjectInfo", props={"transform_space": "RELATIVE"}, Object=path)
+        clock = g.node("GeometryNodeInputSceneTime")
+        time = g.math("MULTIPLY_ADD", clock["Seconds"], tscale, toffset, label="Time")
+
+    # Forward each part's own inputs to "<Part> > <Panel>" panels on the modifier
+    nodes, used = {}, {"Path", "Seed", "Time Scale", "Time Offset", *SHARED, *(f"Show {l}" for l, _ in parts)}
+    for label, ng in parts:
+        with g.frame(f"{label}"):
+            node = g.group(ng, label=label)
+        nodes[label] = node
+        for it in _iface_inputs(ng):
+            sock = next(s for s in node.b.inputs if s.identifier == it.identifier)
+            if it.name == "Curve":
+                g.connect(info["Geometry"], sock)
+            elif it.name == "Time":
+                g.connect(time, sock)
+            elif it.name in shared:
+                g.connect(shared[it.name], sock)
+            elif it.socket_type == "NodeSocketGeometry":
+                continue                                        # wired below (Anchors)
+            else:
+                panel = f"{label} > {it.parent.name}" if it.parent and it.parent.name else label
+                kw = {}
+                for k, attr in (("min", "min_value"), ("max", "max_value"), ("subtype", "subtype")):
+                    if hasattr(it, attr):
+                        kw[k] = getattr(it, attr)
+                if kw.get("subtype") == "NONE":
+                    kw.pop("subtype")
+                default = getattr(it, "default_value", None)
+                if default is not None and hasattr(default, "__len__") and not isinstance(default, str):
+                    default = tuple(default)
+                stype = _TYPE_BY_SOCKET.get(it.socket_type, None)
+                if stype is None:
+                    continue
+                name = it.name if it.name not in used else f"{label} {it.name}"
+                used.add(name)
+                src = g.input(name, stype, default, desc=it.description, panel=panel, **kw)
+                g.connect(src, sock)
+
+    if "Houses" in nodes and "Props" in nodes:
+        anchors = [s for s in nodes["Houses"].b.outputs if s.name == "Anchors"]
+        if anchors:
+            g.connect(anchors[0], nodes["Props"].i("Anchors"))
+
+    with g.frame("Join visible parts, realize once for materials"):
+        join = g.node("GeometryNodeJoinGeometry")
+        for label, node in nodes.items():
+            sw = g.node("GeometryNodeSwitch", props={"input_type": "GEOMETRY"}, Switch=shows[label],
+                        **{"True": node["Geometry"]})
+            g.connect(sw["Output"], join.i("Geometry"))
+        real = g.node("GeometryNodeRealizeInstances", Geometry=join["Geometry"])
+    g.output("Geometry", "GEOMETRY", real["Geometry"])
+    return g.finish()

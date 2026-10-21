@@ -229,7 +229,8 @@ class Graph:
         return _F()
 
     def finish(self):
-        layout(self.nt, self._gin, self._gout)
+        groups = [nodes for _, nodes, _ in self._frames if nodes]
+        layout(self.nt, self._gin, self._gout, groups)
         for label, nodes, color in self._frames:
             if not nodes:
                 continue
@@ -244,13 +245,16 @@ class Graph:
         return self.nt
 
 
-def layout(nt, gin=None, gout=None, dx=260, dy=40):
-    """Column layout by longest path from sources: readable left-to-right data flow without manual coordinates."""
-    nodes = [n for n in nt.nodes if n.bl_idname != "NodeFrame"]
-    preds = {n: set() for n in nodes}
-    for l in nt.links:
-        if l.from_node in preds and l.to_node in preds:
-            preds[l.to_node].add(l.from_node)
+def _node_h(n):
+    """Estimated drawn height: header, one row per socket, extra rows for vector defaults and option widgets."""
+    rows = len(_enabled(n.outputs)) + len([s for s in _enabled(n.inputs) if not s.hide])
+    rows += sum(2 for s in _enabled(n.inputs) if not s.is_linked and s.type in {"VECTOR", "ROTATION"})
+    props = [p for p in n.bl_rna.properties if p.type == "ENUM" and not p.is_readonly
+             and p.identifier not in {"warning_propagation", "color_tag"}]
+    return 50 + 22 * rows + 26 * len(props)
+
+
+def _depths(nodes, preds):
     depth = {}
 
     def d(n, stack=()):
@@ -258,24 +262,78 @@ def layout(nt, gin=None, gout=None, dx=260, dy=40):
             return depth[n]
         if n in stack:
             return 0
-        depth[n] = 0 if not preds[n] else 1 + max(d(p, stack + (n,)) for p in preds[n])
+        ps = [p for p in preds[n] if p in preds]
+        depth[n] = 0 if not ps else 1 + max(d(p, stack + (n,)) for p in ps)
         return depth[n]
 
     for n in nodes:
         d(n)
-    if gin is not None:
-        depth[gin] = 0
-    if gout is not None:
-        depth[gout] = max(depth.values(), default=0) + 1
-    cols = {}
+    return depth
+
+
+def layout(nt, gin=None, gout=None, groups=(), dx=60, dy=40, gap=120):
+    """Block layout: each frame is laid out internally by longest path (columns), then frames and loose nodes
+    are placed as blocks in columns by their own longest path, so frames never overlap and data flows left to
+    right. Group Input sits first, Group Output last."""
+    nodes = [n for n in nt.nodes if n.bl_idname != "NodeFrame"]
+    preds = {n: set() for n in nodes}
+    for l in nt.links:
+        if l.from_node in preds and l.to_node in preds:
+            preds[l.to_node].add(l.from_node)
+    unit_of, units = {}, []
+    for grp in groups:
+        u = [n for n in grp if n in preds]
+        if u:
+            units.append(u)
+            for n in u:
+                unit_of[n] = len(units) - 1
     for n in nodes:
-        cols.setdefault(depth[n], []).append(n)
-    for c in sorted(cols):
-        ns = cols[c]
-        # keep each column ordered by the mean height of its sources so links cross less
-        ns.sort(key=lambda n: (sum(p.location.y for p in preds[n]) / len(preds[n])) if preds[n] else 0, reverse=True)
-        y = 0
-        for n in ns:
-            n.location = (c * dx, y)
-            visible_in = [s for s in _enabled(n.inputs) if not s.hide]
-            y -= 60 + 22 * (len(_enabled(n.outputs)) + len(visible_in)) + dy
+        if n not in unit_of:
+            units.append([n])
+            unit_of[n] = len(units) - 1
+    # unit graph
+    upreds = {i: set() for i in range(len(units))}
+    for n in nodes:
+        for p in preds[n]:
+            if unit_of[p] != unit_of[n]:
+                upreds[unit_of[n]].add(unit_of[p])
+    udepth = _depths(list(upreds), upreds)
+    if gin is not None:
+        udepth[unit_of[gin]] = 0
+    if gout is not None:
+        udepth[unit_of[gout]] = max(udepth.values(), default=0) + 1
+    # internal layout of each unit, relative coordinates; returns (w, h)
+    size, rel = {}, {}
+    for i, u in enumerate(units):
+        local = {n: {p for p in preds[n] if p in u} for n in u}
+        ld = _depths(u, local)
+        cols = {}
+        for n in u:
+            cols.setdefault(ld[n], []).append(n)
+        x, w_tot, h_max = 0, 0, 0
+        for c in sorted(cols):
+            y, w = 0, 0
+            for n in cols[c]:
+                rel[n] = (x, y)
+                y -= _node_h(n) + dy
+                w = max(w, n.width)
+            h_max = max(h_max, -y)
+            x += w + dx
+        size[i] = (x - dx, h_max)
+    ucols = {}
+    for i in range(len(units)):
+        ucols.setdefault(udepth[i], []).append(i)
+    X = 0
+    placed_y = {}
+    for c in sorted(ucols):
+        us = ucols[c]
+        # order blocks by the mean height of the blocks feeding them, so links cross less
+        us.sort(key=lambda i: -(sum(placed_y.get(p, 0) for p in upreds[i]) / len(upreds[i])) if upreds[i] else 0)
+        Y = 0
+        for i in us:
+            placed_y[i] = Y
+            for n in units[i]:
+                rx, ry = rel[n]
+                n.location = (X + rx, Y + ry)
+            Y -= size[i][1] + gap
+        X += max(size[i][0] for i in us) + gap * 1.5

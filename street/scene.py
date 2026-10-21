@@ -16,12 +16,12 @@ def reset():
     return sc
 
 
-def path_curve(kind="reference", name="Street Path"):
+def path_curve(kind="reference", name="Street Path", sc=None):
     """A path curve in the XY plane. 'reference' is the gentle S-bend of the reference street; the others are
     transfer inputs used to show the graph working on new paths."""
     pts = {
-        # ~60 m gently winding street, travel along +Y (bend amplitude from the vanishing-point drift)
-        "reference": [(0, -10, 0), (0.6, 5, 0), (-0.8, 20, 0), (0.5, 35, 0), (-0.4, 50, 0)],
+        # ~110 H gently winding street, travel along +Y (bend amplitude from the vanishing-point drift)
+        "reference": [(0, -6, 0), (0.6, 8, 0), (-0.9, 24, 0), (0.6, 42, 0), (-1.2, 62, 0), (0.8, 84, 0), (0, 104, 0)],
         "straight": [(0, -10, 0), (0, 50, 0)],
         "s_bend": [(0, -10, 0), (6, 8, 0), (-6, 26, 0), (4, 44, 0), (0, 60, 0)],
         "hill": [(0, -10, 0), (0, 10, 1.5), (2, 30, 4.0), (-1, 50, 4.5)],
@@ -36,23 +36,23 @@ def path_curve(kind="reference", name="Street Path"):
         bp.co = p
         bp.handle_left_type = bp.handle_right_type = "AUTO"
     ob = bpy.data.objects.new(name, cu)
-    bpy.context.scene.collection.objects.link(ob)
+    (sc or bpy.context.scene).collection.objects.link(ob)
     return ob
 
 
-def holder(name, curve_obj, group):
+def holder(name, curve_obj, group, sc=None):
     """A mesh-less object carrying the Geometry Nodes modifier, with the path curve fed in through an Object
     Info node inside the top-level group (input socket 'Path')."""
     me = bpy.data.meshes.new(name)
     ob = bpy.data.objects.new(name, me)
-    bpy.context.scene.collection.objects.link(ob)
+    (sc or bpy.context.scene).collection.objects.link(ob)
     mod = ob.modifiers.new(group.name, "NODES")
     mod.node_group = group
     return ob, mod
 
 
-def light_world(sun_elev=42.0, sun_azim=-35.0, strength=4.0):
-    sc = bpy.context.scene
+def light_world(sun_elev=42.0, sun_azim=-35.0, strength=4.0, sc=None):
+    sc = sc or bpy.context.scene
     sun = bpy.data.lights.new("Sun", "SUN")
     sun.energy = strength
     sun.angle = math.radians(2.0)
@@ -68,8 +68,11 @@ def light_world(sun_elev=42.0, sun_azim=-35.0, strength=4.0):
     sep = nt.nodes.new("ShaderNodeSeparateXYZ")
     ramp = nt.nodes.new("ShaderNodeValToRGB")
     nt.links.new(grad.outputs["Generated"], sep.inputs[0])
-    nt.links.new(sep.outputs["Z"], ramp.inputs[0])
-    ramp.color_ramp.elements[0].position = 0.5
+    mr = nt.nodes.new("ShaderNodeMapRange")
+    mr.inputs["From Min"].default_value, mr.inputs["From Max"].default_value = -0.05, 0.7
+    nt.links.new(sep.outputs["Z"], mr.inputs["Value"])
+    nt.links.new(mr.outputs[0], ramp.inputs[0])
+    ramp.color_ramp.elements[0].position = 0.0
     ramp.color_ramp.elements[0].color = (0.62, 0.72, 0.74, 1)      # horizon haze
     ramp.color_ramp.elements[1].color = (0.30, 0.55, 0.68, 1)      # sky top
     nt.links.new(ramp.outputs[0], bg.inputs["Color"])
@@ -94,8 +97,8 @@ def camera(name="Camera", lens=24.0, loc=(0, -8, 1.6), target=(0, 10, 1.2)):
     return ob, t
 
 
-def render_setup(width=1280, height=704, samples=16, engine="BLENDER_EEVEE"):
-    sc = bpy.context.scene
+def render_setup(width=1280, height=704, samples=16, engine="BLENDER_EEVEE", sc=None):
+    sc = sc or bpy.context.scene
     sc.render.engine = engine
     sc.render.resolution_x, sc.render.resolution_y = width, height
     sc.render.resolution_percentage = 100

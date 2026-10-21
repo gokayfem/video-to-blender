@@ -141,9 +141,11 @@ def get_modifier_inputs(mod):
     return out
 
 
-def evaluated_stats(obj):
+def evaluated_stats(obj, scene=None):
     """Counts on the evaluated geometry: proves the graph evaluates to something at the current frame."""
-    dg = bpy.context.evaluated_depsgraph_get()
+    dg = scene.view_layers[0].depsgraph if scene else bpy.context.evaluated_depsgraph_get()
+    if scene:
+        dg.update()
     ev = obj.evaluated_get(dg)
     m = ev.to_mesh()
     stats = {"verts": len(m.vertices), "faces": len(m.polygons),
