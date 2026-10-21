@@ -203,7 +203,7 @@ def build_leaf():
     g = Graph("SS Prop Leaf", description="One rounded leaf: a flattened ellipsoid lying in XY (normal +Z), tip "
                                           "towards +X")
     size = g.input("Size", "FLOAT", 0.09, min=0.005, max=1, subtype="DISTANCE", desc="Leaf length")
-    sph = g.node("GeometryNodeMeshUVSphere", Segments=8, Rings=3, Radius=0.5)
+    sph = g.node("GeometryNodeMeshUVSphere", Segments=6, Rings=3, Radius=0.5)
     s = g.combine(size, g.math("MULTIPLY", size, 0.72), g.math("MULTIPLY", size, 0.18))
     leaf = g.node("GeometryNodeTransform", Geometry=sph["Mesh"], Scale=s,
                   Translation=g.combine(g.math("MULTIPLY", size, 0.3), 0, 0))
@@ -212,14 +212,14 @@ def build_leaf():
 
 
 def build_blossom():
-    g = Graph("SS Prop Blossom", description="A geranium head: a dome of five round florets, base at the origin, "
+    g = Graph("SS Prop Blossom", description="A geranium head: a dome of four round florets, base at the origin, "
                                              "opening towards +Z")
     size = g.input("Size", "FLOAT", 0.075, min=0.005, max=1, subtype="DISTANCE", desc="Head diameter")
-    with g.frame("Four florets in a ring and one on top"):
-        ring = g.node("GeometryNodeMeshCircle", Vertices=4, Radius=0.27)
+    with g.frame("Three florets in a ring and one on top"):
+        ring = g.node("GeometryNodeMeshCircle", Vertices=3, Radius=0.27)
         top = g.node("GeometryNodePoints", Count=1, Position=(0, 0, 0.18))
         pts = _join(g, g.node("GeometryNodeMeshToPoints", Mesh=ring["Mesh"])["Points"], top["Points"])
-        ico = g.node("GeometryNodeMeshUVSphere", Segments=7, Rings=4, Radius=0.25)
+        ico = g.node("GeometryNodeMeshUVSphere", Segments=6, Rings=4, Radius=0.27)
         inst = g.node("GeometryNodeInstanceOnPoints", Points=pts, Instance=ico["Mesh"])
         real = g.node("GeometryNodeRealizeInstances", Geometry=inst["Instances"])
         sc = g.node("GeometryNodeTransform", Geometry=real["Geometry"], Translation=g.combine(0, 0, g.math(
@@ -314,11 +314,11 @@ def build_window_box(rbox, foliage):
         lip = _xf(g, g.group(rbox, Size=g.combine(g.math("ADD", w, 0.05), 0.31, 0.05), Radius=0.02, Level=1), (0, 0.15, -0.06))
         trough = _mat(g, _join(g, trough, lip), "terracotta")
     with g.frame("Leaf mound: a lumpy rounded box spilling over the front"):
-        mound = g.group(rbox, Size=g.combine(g.math("ADD", w, 0.06), 0.32, 0.26), Radius=0.12)
+        mound = g.group(rbox, Size=g.combine(g.math("ADD", w, 0.06), 0.32, 0.26), Radius=0.12, Level=1)
         mound = _bumpy(g, _xf(g, mound, (0, 0.17, 0.0)), 0.09, 7.0, seed)
         plants = g.group(foliage, Mesh=mound, **{"Leaf Color": lc, "Color A": ca, "Color B": cb, "Color C": cc,
-                                                  "Seed": seed, "Blossom Density": g.math("MULTIPLY", fd, 60.0), "Blossom Size": 0.1,
-                                                  "Bare Back": True, "Leaf Density": 260.0, "Leaf Size": 0.1})
+                                                  "Seed": seed, "Blossom Density": g.math("MULTIPLY", fd, 45.0), "Blossom Size": 0.11,
+                                                  "Bare Back": True, "Leaf Density": 120.0, "Leaf Size": 0.12})
     with g.frame("Trailing leaves spilling over the trough front (ragged curtain, leaves only)"):
         cur = g.node("GeometryNodeMeshGrid", **{"Size X": g.math("MULTIPLY", w, 0.95), "Size Y": 0.2,
                                                 "Vertices X": 14, "Vertices Y": 4})
@@ -329,7 +329,7 @@ def build_window_box(rbox, foliage):
         cur = g.node("GeometryNodeDeleteGeometry", props={"domain": "FACE"}, Geometry=cur,
                      Selection=_cmp(g, "LESS_THAN", hang, 0.45))
         trail = g.group(foliage, Mesh=cur["Geometry"], Seed=g.math("ADD", seed, 5), **{
-            "Show Mound": False, "Leaf Density": 260.0, "Leaf Size": 0.085, "Leaf Color": lc,
+            "Show Mound": False, "Leaf Density": 140.0, "Leaf Size": 0.1, "Leaf Color": lc,
             "Blossom Density": 0.0})
     g.output("Geometry", "GEOMETRY", _join(g, trough, plants, trail))
     return g.finish()
@@ -395,7 +395,7 @@ def build_lantern(rbox, rod):
     g = Graph("SS Prop Lantern", description="Black iron box lantern on a wall arm, warm glowing panes "
                                              "(SS Lantern Glass, emission from ss_color and ss_glow). Origin on "
                                              "the wall at the lantern's centre height; +X along the wall, +Y out")
-    size = g.input("Size", "FLOAT", 0.85, min=0.2, max=4, desc="Overall scale")
+    size = g.input("Size", "FLOAT", 0.7, min=0.2, max=4, desc="Overall scale")
     c = (0, 0.27, 0)
     with g.frame("Glass box"):
         glass = _xf(g, g.node("GeometryNodeMeshCube", Size=(0.15, 0.15, 0.2))["Mesh"], c)
@@ -434,6 +434,7 @@ def build_sign(rbox, rod, ring):
     swing = g.input("Swing", "FLOAT", 0.0, min=-1.0, max=1.0, subtype="ANGLE",
                     desc="Board angle about the bar (animate this)")
     paint = g.input("Paint Color", "COLOR", (0.21, 0.42, 0.37, 1), desc="Colour of the round board's face")
+    size = g.input("Size", "FLOAT", 0.8, min=0.2, max=3, desc="Overall scale (1 = 0.74 x 0.5 bread board)")
     reach = 0.9
     with g.frame("Bracket: wall plate, bar, diagonal brace, two scrolls, ball finial"):
         parts = [_xf(g, g.group(rbox, Size=(0.09, 0.04, 0.46), Radius=0.015, Level=1), (0, 0.02, -0.15)),
@@ -451,7 +452,7 @@ def build_sign(rbox, rod, ring):
     with g.frame("Board (pivot on the bar): bread board or round board, two hooks"):
         hooks = _mat(g, _join(g, g.group(rod, Start=(0, -0.3, 0.02), End=(0, -0.3, -0.15), Radius=0.012),
                               g.group(rod, Start=(0, 0.3, 0.02), End=(0, 0.3, -0.15), Radius=0.012)), "iron")
-        bread_b = _mat(g, _xf(g, g.group(rbox, Size=(0.07, 0.74, 0.44), Radius=0.035), (0, 0, -0.37)), "sign")
+        bread_b = _mat(g, _xf(g, g.group(rbox, Size=(0.07, 0.74, 0.5), Radius=0.035), (0, 0, -0.4)), "sign")
         loaf = g.node("GeometryNodeMeshUVSphere", Segments=16, Rings=8, Radius=1.0)
         loaves = _join(g, _xf(g, loaf["Mesh"], (0.04, 0, -0.37), s=(0.03, 0.25, 0.11)),
                        _xf(g, loaf["Mesh"], (-0.04, 0, -0.37), s=(0.03, 0.25, 0.11)))
@@ -471,16 +472,16 @@ def build_sign(rbox, rod, ring):
                        true=roundb)
         rot = g.combine(0, swing, 0)
         board = _xf(g, _join(g, board, hooks), g.combine(0, reach * 0.53, 0), rot)
-    g.output("Geometry", "GEOMETRY", _join(g, bracket, board))
+    g.output("Geometry", "GEOMETRY", _xf(g, _join(g, bracket, board), s=g.combine(size, size, size)))
     return g.finish()
 
 
 def build_barrel(rod):
     g = Graph("SS Prop Barrel", description="Wooden barrel: bulging staves (seams in the shader from ss_local) and "
                                             "two iron hoops. Origin at the base centre; +Z up")
-    h = g.input("Height", "FLOAT", 0.66, min=0.1, max=3, subtype="DISTANCE", desc="Barrel height")
-    r = g.input("Radius", "FLOAT", 0.22, min=0.05, max=2, subtype="DISTANCE", desc="Radius at the ends")
-    bulge = g.input("Bulge", "FLOAT", 0.22, min=0, max=1, subtype="FACTOR", desc="Extra radius at the belly, "
+    h = g.input("Height", "FLOAT", 0.56, min=0.1, max=3, subtype="DISTANCE", desc="Barrel height")
+    r = g.input("Radius", "FLOAT", 0.25, min=0.05, max=2, subtype="DISTANCE", desc="Radius at the ends")
+    bulge = g.input("Bulge", "FLOAT", 0.18, min=0, max=1, subtype="FACTOR", desc="Extra radius at the belly, "
                                                                                    "relative to Radius")
     with g.frame("Body: cylinder bulged by 1 - (2z - 1)^2"):
         cyl = g.node("GeometryNodeMeshCylinder", Vertices=32, **{"Side Segments": 8}, Radius=1.0, Depth=1.0)
@@ -521,20 +522,20 @@ def build_pot(rbox, ring, foliage):
         soil = g.node("GeometryNodeMeshCylinder", Vertices=24, Radius=0.16, Depth=0.02)
         soil = _mat(g, _xf(g, soil["Mesh"], (0, 0, 0.265)), "soil")
     with g.frame("Leafy plant: lumpy mound covered by large leaves (blossoms when flowering)"):
-        mound = g.node("GeometryNodeMeshIcoSphere", Radius=0.2, Subdivisions=3)
+        mound = g.node("GeometryNodeMeshIcoSphere", Radius=0.2, Subdivisions=2)
         mound = _bumpy(g, _xf(g, mound["Mesh"], (0, 0, 0.36), s=(1.05, 1.05, 0.85)), 0.12, 5.0, seed)
         flowering = _cmp(g, "EQUAL", kind, 1, "INT")
         leafy = g.group(foliage, Mesh=mound, Seed=seed, **{
-            "Leaf Size": 0.12, "Leaf Density": 330.0, "Leaf Color": (0.07, 0.17, 0.035, 1),
-            "Blossom Density": g.math("MULTIPLY", flowering, 70.0), "Blossom Size": 0.09})
+            "Leaf Size": 0.13, "Leaf Density": 150.0, "Leaf Color": (0.07, 0.17, 0.035, 1),
+            "Blossom Density": g.math("MULTIPLY", flowering, 35.0), "Blossom Size": 0.1})
     with g.frame("Conifer: three stacked cones, slightly lumpy"):
         tiers = []
-        for i, (rb, z) in enumerate(((0.2, 0.36), (0.16, 0.5), (0.11, 0.63))):
-            c = g.node("GeometryNodeMeshCone", Vertices=16, **{"Side Segments": 3, "Radius Top": 0.0,
-                                                               "Radius Bottom": rb, "Depth": 0.24})
+        for i, (rb, z) in enumerate(((0.17, 0.34), (0.13, 0.45), (0.09, 0.55))):
+            c = g.node("GeometryNodeMeshCone", Vertices=10, **{"Side Segments": 2, "Radius Top": 0.0,
+                                                               "Radius Bottom": rb, "Depth": 0.2})
             tiers.append(_xf(g, c["Mesh"], (0, 0, z)))
         tree = _bumpy(g, _join(g, *tiers), 0.05, 9.0, seed)
-        tree = g.group(foliage, Mesh=tree, Seed=seed, **{"Leaf Size": 0.055, "Leaf Density": 520.0,
+        tree = g.group(foliage, Mesh=tree, Seed=seed, **{"Leaf Size": 0.06, "Leaf Density": 260.0,
                                                           "Leaf Color": pm.lin((0.16, 0.30, 0.13)),
                                                           "Blossom Density": 0.0})
     plant = _switch(g, "GEOMETRY", _cmp(g, "EQUAL", kind, 2, "INT"), false=leafy, true=tree)
@@ -550,7 +551,7 @@ def build_ivy(foliage):
     dh = g.input("Door Height", "FLOAT", 2.0, min=0.5, max=5, subtype="DISTANCE", desc="Height of the door")
     spread = g.input("Spread", "FLOAT", 0.45, min=0.05, max=2, subtype="DISTANCE",
                      desc="How far the ivy reaches out from the door frame")
-    dens = g.input("Density", "FLOAT", 500.0, min=0, max=3000, desc="Leaves per square unit")
+    dens = g.input("Density", "FLOAT", 170.0, min=0, max=3000, desc="Leaves per square unit")
     seed = g.input("Seed", "INT", 0, desc="Random seed")
     with g.frame("Wall patch: grid on the wall, keep faces in a ragged band around the door outline"):
         sx = g.math("ADD", w, g.math("MULTIPLY", spread, 2.0))
@@ -569,7 +570,7 @@ def build_ivy(foliage):
         patch = g.node("GeometryNodeDeleteGeometry", props={"domain": "FACE"}, Geometry=wall,
                        Selection=_bool(g, "NOT", keep))
     ivy = g.group(foliage, Mesh=patch["Geometry"], Seed=seed, **{
-        "Show Mound": False, "Leaf Density": dens, "Leaf Size": 0.075, "Leaf Color": (0.08, 0.16, 0.03, 1),
+        "Show Mound": False, "Leaf Density": dens, "Leaf Size": 0.095, "Leaf Color": (0.08, 0.16, 0.03, 1),
         "Blossom Density": 0.0})
     g.output("Geometry", "GEOMETRY", ivy)
     return g.finish()
@@ -597,8 +598,10 @@ def build():
     time = g.input("Time", "FLOAT", 0.0, subtype="TIME_ABSOLUTE", desc="Seconds; drives sign swing and "
                                                                        "lantern flicker")
     # Window Boxes
-    wb_ch = g.input("Window Box Chance", "FLOAT", 0.75, min=0, max=1, subtype="FACTOR", panel="Window Boxes",
+    wb_ch = g.input("Window Box Chance", "FLOAT", 0.85, min=0, max=1, subtype="FACTOR", panel="Window Boxes",
                     desc="Share of window sills that get a flower box")
+    wb_up = g.input("Upper Floor Share", "FLOAT", 0.5, min=0, max=1, subtype="FACTOR", panel="Window Boxes",
+                    desc="Upper-floor sills get a box at Chance times this")
     wb_fd = g.input("Flower Density", "FLOAT", 1.0, min=0, max=4, panel="Window Boxes",
                     desc="How many blossoms per box (1 = like the reference)")
     wb_ca = g.input("Flower Red", "COLOR", (0.66, 0.02, 0.012, 1), panel="Window Boxes",
@@ -610,37 +613,39 @@ def build():
     wb_lc = g.input("Leaf Color", "COLOR", (0.10, 0.25, 0.04, 1), panel="Window Boxes",
                     desc="Leaf colour of window boxes and leafy pots")
     # Awnings
-    aw_ch = g.input("Awning Chance", "FLOAT", 0.85, min=0, max=1, subtype="FACTOR", panel="Awnings",
+    aw_ch = g.input("Awning Chance", "FLOAT", 0.9, min=0, max=1, subtype="FACTOR", panel="Awnings",
                     desc="Share of shopfronts that get an awning")
-    aw_c1 = g.input("Stripe Blue", "COLOR", (0.06, 0.20, 0.45, 1), panel="Awnings", desc="Blue-and-white awnings")
-    aw_c2 = g.input("Stripe Pink", "COLOR", (0.72, 0.29, 0.26, 1), panel="Awnings", desc="Pink-and-white awnings")
-    aw_c3 = g.input("Stripe Red", "COLOR", (0.58, 0.06, 0.04, 1), panel="Awnings", desc="Red-and-white awnings")
+    aw_c1 = g.input("Stripe Blue", "COLOR", pm.lin((0.42, 0.52, 0.50)) + (1,), panel="Awnings",
+                    desc="Cool awnings (green-grey and cream in the reference, about half)")
+    aw_c2 = g.input("Stripe Pink", "COLOR", pm.lin((0.70, 0.40, 0.27)) + (1,), panel="Awnings",
+                    desc="Warm awnings (peach and cream in the reference, about 40%)")
+    aw_c3 = g.input("Stripe Red", "COLOR", (0.58, 0.06, 0.04, 1), panel="Awnings", desc="Red-and-white awnings (rare)")
     aw_d = g.input("Awning Depth", "FLOAT", 1.0, min=0.3, max=2.5, subtype="DISTANCE", panel="Awnings",
                    desc="How far awnings reach out over the verge")
-    aw_sw = g.input("Stripe Width", "FLOAT", 0.18, min=0.06, max=0.8, subtype="DISTANCE", panel="Awnings",
+    aw_sw = g.input("Stripe Width", "FLOAT", 0.24, min=0.06, max=0.8, subtype="DISTANCE", panel="Awnings",
                     desc="One coloured plus one cream stripe (and one scallop)")
     # Signs
-    sg_ch = g.input("Sign Chance", "FLOAT", 0.9, min=0, max=1, subtype="FACTOR", panel="Signs",
+    sg_ch = g.input("Sign Chance", "FLOAT", 0.25, min=0, max=1, subtype="FACTOR", panel="Signs",
                     desc="Share of bracket spots that get a hanging sign")
     sg_rd = g.input("Round Share", "FLOAT", 0.5, min=0, max=1, subtype="FACTOR", panel="Signs",
                     desc="Share of round boards (the rest are bread boards)")
     sg_pc = g.input("Sign Paint", "COLOR", (0.21, 0.42, 0.37, 1), panel="Signs", desc="Round board face colour")
     # Lanterns
-    ln_ch = g.input("Lantern Chance", "FLOAT", 1.0, min=0, max=1, subtype="FACTOR", panel="Lanterns",
+    ln_ch = g.input("Lantern Chance", "FLOAT", 0.3, min=0, max=1, subtype="FACTOR", panel="Lanterns",
                     desc="Share of lantern spots that get a lantern")
-    ln_col = g.input("Glow Color", "COLOR", (1.0, 0.5, 0.12, 1), panel="Lanterns", desc="Lantern light colour")
-    ln_str = g.input("Glow Strength", "FLOAT", 2.5, min=0, max=100, panel="Lanterns",
+    ln_col = g.input("Glow Color", "COLOR", (1.0, 0.55, 0.1, 1), panel="Lanterns", desc="Lantern light colour")
+    ln_str = g.input("Glow Strength", "FLOAT", 1.6, min=0, max=100, panel="Lanterns",
                      desc="Emission strength of the panes")
     ln_fl = g.input("Flicker", "FLOAT", 0.12, min=0, max=1, subtype="FACTOR", panel="Lanterns",
                     desc="How much the glow flickers (0 = steady)")
     # Verge
-    vg_pc = g.input("Pot Chance", "FLOAT", 0.8, min=0, max=1, subtype="FACTOR", panel="Verge Props",
+    vg_pc = g.input("Pot Chance", "FLOAT", 0.65, min=0, max=1, subtype="FACTOR", panel="Verge Props",
                     desc="Chance that a verge slot holds a pot")
-    vg_bc = g.input("Barrel Chance", "FLOAT", 0.35, min=0, max=1, subtype="FACTOR", panel="Verge Props",
+    vg_bc = g.input("Barrel Chance", "FLOAT", 0.25, min=0, max=1, subtype="FACTOR", panel="Verge Props",
                     desc="Chance that a verge spot starts with a pair of barrels")
-    vg_n = g.input("Cluster Size", "INT", 3, min=1, max=8, panel="Verge Props",
+    vg_n = g.input("Cluster Size", "INT", 2, min=1, max=8, panel="Verge Props",
                    desc="Slots per verge spot (pots and barrels stand side by side)")
-    vg_ps = g.input("Pot Size", "FLOAT", 1.4, min=0.3, max=3, panel="Verge Props", desc="Average pot scale")
+    vg_ps = g.input("Pot Size", "FLOAT", 1.0, min=0.3, max=3, panel="Verge Props", desc="Average pot scale")
     # Ivy
     iv_ch = g.input("Ivy Chance", "FLOAT", 0.35, min=0, max=1, subtype="FACTOR", panel="Ivy",
                     desc="Share of doors framed by ivy")
@@ -664,7 +669,9 @@ def build():
         return d
 
     with g.frame("Window boxes on sills (anchor 1, 2): one box per sill, as long as the window plus a margin"):
-        sel = _bool(g, "AND", _is_anchor(g, 1, 2), _chance(g, wb_ch, _seed(g, seed, 101)))
+        ground = _bool(g, "AND", _is_anchor(g, 1), _chance(g, wb_ch, _seed(g, seed, 101)))
+        upper = _bool(g, "AND", _is_anchor(g, 2), _chance(g, g.math("MULTIPLY", wb_ch, wb_up), _seed(g, seed, 101)))
+        sel = _bool(g, "OR", ground, upper)
 
         def wb_body(f, idx):
             box = g.group(wbox, Width=g.math("ADD", f["Width"], 0.22), Seed=g.math("ADD", idx, g.math(
@@ -679,8 +686,8 @@ def build():
 
         def aw_body(f, idx):
             r = f["Rand"]
-            col = _cmix(g, g.math("GREATER_THAN", r, 0.4), aw_c1,
-                        _cmix(g, g.math("GREATER_THAN", r, 0.7), aw_c2, aw_c3))
+            col = _cmix(g, g.math("GREATER_THAN", r, 0.5), aw_c1,
+                        _cmix(g, g.math("GREATER_THAN", r, 0.9), aw_c2, aw_c3))
             aw = g.group(awning, Width=g.math("ADD", f["Width"], 0.5), Depth=aw_d,
                          Drop=g.math("MULTIPLY", aw_d, 0.5), **{"Stripe Width": aw_sw, "Stripe Color": col})
             return _place(g, aw, f["Pos"], f["Rot"])
@@ -740,15 +747,15 @@ def build():
         u = _rand(g, 0.0, 1.0, _seed(g, seed, 109))
         pot_here = _cmp(g, "LESS_THAN", _rand(g, 0.0, 1.0, _seed(g, seed, 110)), vg_pc)
         keep = _bool(g, "OR", barrel_here, pot_here)
-        pot_kind = g.math("ADD", 1.0, g.math("ADD", g.math("GREATER_THAN", u, 0.45), g.math(
-            "GREATER_THAN", u, 0.75)))
+        pot_kind = g.math("ADD", 1.0, g.math("ADD", g.math("GREATER_THAN", u, 0.55), g.math(
+            "GREATER_THAN", u, 0.85)))
         kind = _switch(g, "INT", barrel_here, false=pot_kind,
                       true=0)
-        pscale = g.math("MULTIPLY", vg_ps, _rand(g, 0.75, 1.3, _seed(g, seed, 111)))
+        pscale = g.math("MULTIPLY", vg_ps, _rand(g, 0.7, 1.35, _seed(g, seed, 111)))
         scale = _switch(g, "FLOAT", barrel_here, false=pscale,
                        true=_rand(g, 0.92, 1.05, _seed(g, seed, 112)))
         y = _switch(g, "FLOAT", barrel_here,
-                   false=g.math("ADD", 0.08, g.math("MULTIPLY", pscale, 0.19)), true=0.31)
+                   false=g.math("ADD", 0.08, g.math("MULTIPLY", pscale, 0.19)), true=0.34)
     with g.frame("Verge: move each slot out from the wall in the anchor frame, instance with a random turn"):
         vrot = _attr(g, "ss_rot", "QUATERNION")
         off = g.node("FunctionNodeRotateVector", Vector=g.combine(x, y, 0.0), Rotation=vrot)

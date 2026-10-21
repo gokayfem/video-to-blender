@@ -25,10 +25,12 @@ ap.add_argument("--preset", default="")
 ap.add_argument("--set", action="append", default=[])
 ap.add_argument("--report", action="store_true")
 ap.add_argument("--engine", default="")
+ap.add_argument("--camera", default="", help="camera object name (default: the scene camera)")
 a = ap.parse_args(argv)
 
 sc = bpy.data.scenes[a.scene]
-bpy.context.window.scene = sc
+if bpy.context.window:
+    bpy.context.window.scene = sc
 street = next(o for o in sc.objects if o.type == "MESH" and any(m.type == "NODES" for m in o.modifiers))
 mod = next(m for m in street.modifiers if m.type == "NODES")
 values = {}
@@ -39,6 +41,8 @@ for kv in a.set:
     values[k] = json.loads(v)
 if values:
     inspect.set_modifier_inputs(mod, values)
+if a.camera:
+    sc.camera = bpy.data.objects[a.camera]
 
 r = sc.render
 r.resolution_x = a.width
@@ -64,5 +68,5 @@ for f in frames:
               f"stats {inspect.evaluated_stats(street, sc)}")
         continue
     r.filepath = str(out.resolve()) + f"{f:04d}"
-    bpy.ops.render.render(write_still=True)
+    bpy.ops.render.render(write_still=True, scene=sc.name)
     print("RENDERED", r.filepath + ".png")

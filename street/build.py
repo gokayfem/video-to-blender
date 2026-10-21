@@ -34,9 +34,11 @@ SCENES = {
     "Transfer Spiral": dict(path="spiral", cam="top"),
 }
 CAM = json.loads((ROOT / "street" / "camera.json").read_text()) if (ROOT / "street" / "camera.json").exists() else {
-    "follow": {"lens": 20.0, "back": 2.0, "side": -0.15, "height": 0.895, "ahead": 8.0, "target_h": 0.895},
-    "high": {"lens": 24.0, "back": 9.0, "height": 6.0, "ahead": 6.0, "target_h": 0.5},
-    "top": {"lens": 30.0, "back": 0.0, "height": 150.0, "ahead": 0.0, "target_h": 0.0, "static": [0, 0]},
+    "follow": {"lens": 20.0, "back": 2.5, "side": -0.15, "height": 0.895, "ahead": 8.0, "target_h": 0.895},
+    "high": {"lens": 32.0, "static": [52, -14, 34], "look_at": [0, 24, 0], "ground": True,
+             "haze": {"haze_start": 12.0, "haze_depth": 220.0}},
+    "top": {"lens": 35.0, "static": [0, -105, 90], "look_at": [0, 2, 0], "ground": True,
+            "haze": {"haze_start": 120.0, "haze_depth": 400.0, "haze_amount": 0.35}},
 }
 
 
@@ -46,8 +48,8 @@ def load_preset(name):
 
 
 def curve_length(ob):
-    dg = bpy.context.evaluated_depsgraph_get()
-    return sum(sp.calc_length() for sp in ob.evaluated_get(dg).data.splines)
+    """Arc length of the path as Geometry Nodes sees it (Bezier splines at their resolution)."""
+    return sum(sp.calc_length() for sp in ob.data.splines)
 
 
 def driver_var(drv, name, target_id, path, id_type="OBJECT"):
@@ -58,47 +60,48 @@ def driver_var(drv, name, target_id, path, id_type="OBJECT"):
     v.targets[0].data_path = path
 
 
-def camera_rig(sc, curve, street, mod, kind):
+def camera_rig(sc, curve, street, mod, kind, name=None):
     spec = CAM[kind]
-    cam_data = bpy.data.cameras.new(f"{sc.name} Camera")
+    name = name or f"{sc.name} Camera"
+    cam_data = bpy.data.cameras.new(name)
     cam_data.lens, cam_data.clip_start, cam_data.clip_end = spec["lens"], 0.05, 500
-    cam = bpy.data.objects.new(f"{sc.name} Camera", cam_data)
-    target = bpy.data.objects.new(f"{sc.name} Camera Target", None)
+    cam = bpy.data.objects.new(name, cam_data)
+    target = bpy.data.objects.new(f"{name} Target", None)
     for o in (cam, target):
         sc.collection.objects.link(o)
     sc.camera = cam
     if "static" in spec:
-        x, y = spec["static"]
-        cam.location = (x, y, spec["height"])
-        target.location = (x, y + 0.001, 0)
+        cam.location = spec["static"]
+        target.location = spec["look_at"]
     else:
-        rig = bpy.data.objects.new(f"{sc.name} Camera Rig", None)
-        sc.collection.objects.link(rig)
-        c = rig.constraints.new("FOLLOW_PATH")
-        c.target, c.use_fixed_location, c.use_curve_follow = curve, True, True
-        c.forward_axis, c.up_axis = "FORWARD_Y", "UP_Z"
-        cam.parent = target.parent = rig
-        cam.location = (-spec.get("side", 0.0), -spec["back"], spec["height"])
-        target.location = (-spec.get("side", 0.0), spec["ahead"], spec["target_h"])
-        # driver: offset_factor = s_walker(t) / L, t = scene seconds * Time Scale + Time Offset
+        # Camera and aim point both ride the path itself (behind and ahead of the walker), so on any curve the
+        # camera stays over the street, never inside a house, however tight the bend.
         ids = inspect.modifier_inputs(mod)
-        fc = c.driver_add("offset_factor")
-        drv = fc.driver
-        drv.type = "SCRIPTED"
-        L = curve_length(curve)
-        curve["street_length"] = L
-        driver_var(drv, "L", curve, '["street_length"]')
+        curve["street_length"] = curve_length(curve)      # before the drivers exist, so they never divide by 0
+        print(f"PATH {curve.name}: length {curve['street_length']:.2f}")
         names = {"ws": "Walk Start", "sp": "Walk Speed", "ts": "Time Scale", "to": "Time Offset"}
         consts = {"ws": 4.0, "sp": 0.9, "ts": 1.0, "to": 0.0}
-        expr = {}
-        for k, nm in names.items():
-            if nm in ids:
-                driver_var(drv, k, street, f'modifiers["{mod.name}"].properties.inputs.{ids[nm]}.value')
-                expr[k] = k
-            else:
-                expr[k] = repr(consts[k])
-        drv.expression = (f"min(max(({expr['ws']} + {expr['sp']} * (frame / {S.FPS} * {expr['ts']} + "
-                          f"{expr['to']})) / L, 0.0), 1.0)")
+        for obj, along, side, up in ((cam, -spec["back"], -spec.get("side", 0.0), spec["height"]),
+                                     (target, spec["ahead"], -spec.get("side", 0.0), spec["target_h"])):
+            rig = bpy.data.objects.new(f"{obj.name} Rig", None)
+            sc.collection.objects.link(rig)
+            c = rig.constraints.new("FOLLOW_PATH")
+            c.target, c.use_fixed_location, c.use_curve_follow = curve, True, True
+            c.forward_axis, c.up_axis = "FORWARD_Y", "UP_Z"
+            obj.parent = rig
+            obj.location = (side, 0.0, up)
+            drv = c.driver_add("offset_factor").driver
+            drv.type = "SCRIPTED"
+            driver_var(drv, "L", curve, '["street_length"]')
+            expr = {}
+            for k, nm in names.items():
+                if nm in ids:
+                    driver_var(drv, k, street, f'modifiers["{mod.name}"].properties.inputs.{ids[nm]}.value')
+                    expr[k] = k
+                else:
+                    expr[k] = repr(consts[k])
+            drv.expression = (f"min(max(({expr['ws']} + {expr['sp']} * (frame / {S.FPS} * {expr['ts']} + "
+                              f"{expr['to']}) + {along}) / L, 0.0), 1.0)")
     tc = cam.constraints.new("TRACK_TO")
     tc.target, tc.track_axis, tc.up_axis = target, "TRACK_NEGATIVE_Z", "UP_Y"
     return cam
@@ -122,10 +125,14 @@ def main():
         light = json.loads((ROOT / "street" / "light.json").read_text())
         render_opts, post_opts = light.pop("render", {}), light.pop("post", None)
         S.light_world(sc=sc, **light)
-        camera_rig(sc, curve, street, mod, cfg["cam"])
+        follow = camera_rig(sc, curve, street, mod, "follow")
+        if cfg["cam"] != "follow":                      # overview shot is the scene camera; follow stays available
+            camera_rig(sc, curve, street, mod, cfg["cam"], name=f"{name} Overview")
+        if CAM[cfg["cam"]].get("ground"):
+            S.ground(sc=sc)
         S.render_setup(sc=sc, **render_opts)
         if post_opts is not None:
-            S.post(sc=sc, **post_opts)
+            S.post(sc=sc, **{**post_opts, **CAM[cfg["cam"]].get("haze", {})})
         sc.frame_set(1)
         st = inspect.evaluated_stats(street, sc)
         print(f"SCENE {name}: verts {st['verts']} faces {st['faces']} materials {len(st['materials'])} "

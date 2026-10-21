@@ -33,6 +33,7 @@ for name, var in variants:
         bpy.data.objects.remove(o)
     cfg = {**base, **var}
     render = cfg.pop("render", {})
+    cfg.pop("post", None)
     S.light_world(sc=sc, **cfg)
     S.render_setup(sc=sc, width=sc.render.resolution_x, height=sc.render.resolution_y, samples=16, **render)
     sc.render.filepath = str(out / name)

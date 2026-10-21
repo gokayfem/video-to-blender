@@ -435,12 +435,12 @@ def timber():
         fl = store(g, fl, "t_win_lo", sub(g, add(g, z0, mul(g, h.floor_h, 0.5)), half(g, h.win_h)))
         fl = store(g, fl, "t_win_hi", add(g, add(g, z0, mul(g, h.floor_h, 0.5)), half(g, h.win_h)))
         upper = cmp(g, tk, 0.5)
-    with g.frame("Corner posts on every timbered storey"):
-        cp, q = dup(g, fl, 2)
+    with g.frame("Party-wall post on every timbered storey, at the house's -x end only, so each party wall "
+                 "carries one post, not two side by side"):
+        cp = fl
         h = House(g)
-        sgn = sub(g, mul(g, q, 2.0), 1.0)
         z0, z1, yf = attr(g, "t_z0"), attr(g, "t_z1"), attr(g, "t_y")
-        posts = piece(g, cp, vec(g, mul(g, sgn, sub(g, half(g, h.width), half(g, bw))), add(g, yf, 0.01),
+        posts = piece(g, cp, vec(g, neg(g, sub(g, half(g, h.width), half(g, bw))), add(g, yf, 0.01),
                                  half(g, add(g, z0, z1))), vec(g, bw, 0.08, sub(g, z1, z0)), tcol, "timber")
     with g.frame("Upper storeys: posts between the window columns"):
         mp, q = dup(g, fl, sw(g, upper, 0, sub(g, attr(g, "h_cols", "INT"), 1.0), "INT"))

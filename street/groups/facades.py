@@ -31,8 +31,8 @@ NAME = "SS Facades"
 FACADE_DEPTH = 4.5       # house depth behind the facade
 
 # plaster albedo and share of houses (docs/REFERENCE.md 2: ~40% cream/peach, 30% ochre/orange, 20% yellow, 10% sage)
-PALETTE = [("Cream", "#D9AE7C", 0.16), ("Peach", "#D79A66", 0.3), ("Ochre", "#C7864C", 0.2),
-           ("Terracotta", "#BD7650", 0.12), ("Yellow", "#CE9E5E", 0.12), ("Sage", "#A09D80", 0.1)]
+PALETTE = [("Cream", "#D9AE7C", 0.17), ("Peach", "#D79A66", 0.33), ("Ochre", "#C7864C", 0.2),
+           ("Terracotta", "#BD7650", 0.12), ("Yellow", "#CE9E5E", 0.11), ("Sage", "#A09D80", 0.07)]
 DOORS = [("Door Brown", "#6E4428"), ("Door Teal", "#2F6E73"), ("Door Green", "#3F6E4E")]
 
 
@@ -131,7 +131,7 @@ def plan():
     shch = g.input("Shutter Chance", "FLOAT", 0.65, min=0.0, max=1.0, subtype="FACTOR", panel="Windows",
                    desc="Share of houses with shutters")
     shcol = g.input("Shutter Color", "COLOR", fm.hexc("#4F6E58"), panel="Windows", desc="Shutter paint")
-    shop = g.input("Shop Chance", "FLOAT", 0.45, min=0.0, max=1.0, subtype="FACTOR", panel="Doors & Shops",
+    shop = g.input("Shop Chance", "FLOAT", 0.35, min=0.0, max=1.0, subtype="FACTOR", panel="Doors & Shops",
                    desc="Share of houses with a shopfront on the ground floor")
     archc = g.input("Arch Chance", "FLOAT", 0.6, min=0.0, max=1.0, subtype="FACTOR", panel="Doors & Shops",
                     desc="Share of doors with a round arch")

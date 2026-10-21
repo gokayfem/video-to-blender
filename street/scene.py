@@ -59,13 +59,13 @@ def srgb(hexstr):
 
 
 def light_world(sun_elev=30.0, sun_azim=145.0, strength=4.0, sun_color="#FFE2BC", sky_top="#9EC6D5",
-                sky_horizon="#E0CFC1", sky_strength=1.0, haze=0.0, haze_color="#E0CFC1", sc=None):
+                sky_horizon="#E0CFC1", sky_strength=1.0, haze=0.0, haze_color="#E0CFC1", sun_angle=2.0, sc=None):
     """Sun + gradient sky (+ optional uniform haze volume). sun_azim rotates the sun about Z: 180 = light
     travelling straight back toward a camera looking down +Y, 145 = from ahead and to the right."""
     sc = sc or bpy.context.scene
     sun = bpy.data.lights.new("Sun", "SUN")
     sun.energy = strength
-    sun.angle = math.radians(2.0)
+    sun.angle = math.radians(sun_angle)
     sun.color = srgb(sun_color)
     ob = bpy.data.objects.new("Sun", sun)
     ob.rotation_euler = (math.radians(90 - sun_elev), 0, math.radians(sun_azim))
@@ -134,42 +134,77 @@ def render_setup(width=1280, height=704, samples=16, engine="BLENDER_EEVEE", sc=
     return sc
 
 
-def post(sc=None, haze_color="#E8D2BE", haze_start=6.0, haze_depth=150.0, haze_amount=0.8, glare=0.25):
-    """Compositor 'SS Post': distance haze from the Mist pass (the reference's warm glow down the street, without
-    a world volume that would swallow the sun) and a soft fog glow on bright lanterns and highlights."""
+def post(sc=None, haze_color="#E8D2BE", haze_start=4.0, haze_depth=150.0, haze_amount=0.9, glare=0.25,
+         sky_top="#9EC6D5", sky_horizon="#E8D2BE"):
+    """Compositor 'SS Post <scene>': the film is transparent, so geometry carries its own antialiased alpha.
+    Geometry is hazed toward the warm horizon colour by the Mist pass (premultiplied, so silhouettes never get
+    halos), then laid over a sky gradient drawn by screen height (the follow camera is level), then a soft glow.
+    The world shader still lights the scene; only the visible sky comes from here."""
     from v2n.graph import Graph
     sc = sc or bpy.context.scene
+    sc.render.film_transparent = True
     sc.view_layers[0].use_pass_mist = True
     w = sc.world
     w.mist_settings.start, w.mist_settings.depth, w.mist_settings.falloff = haze_start, haze_depth, "QUADRATIC"
-    g = Graph("SS Post", kind="COMPOSITOR", description="Distance haze from the mist pass, then soft glare")
+    g = Graph(f"SS Post {sc.name}", kind="COMPOSITOR",
+              description="Haze by mist depth on premultiplied geometry, over a screen-space sky gradient, glow")
     rl = g.node("CompositorNodeRLayers")
     rl.b.scene = sc
-    with g.frame("Haze: mix toward the warm horizon colour by mist depth"):
-        # mist is exactly 1 on the sky (no geometry); keep the sky's own gradient there
-        geo = g.math("LESS_THAN", rl["Mist"], 0.9999, label="Is Geometry")
-        amt = g.math("MULTIPLY", g.math("MULTIPLY", rl["Mist"], haze_amount), geo, label="Haze Amount")
-        mix = g.node("ShaderNodeMix", props={"data_type": "RGBA", "clamp_factor": True})
-        g.connect(amt, mix.i("Factor"))
-        g.connect(rl["Image"], mix.i("A#1") if False else [s for s in mix.b.inputs if s.enabled and s.name == "A"][0])
-        g.connect((*srgb(haze_color), 1.0), [s for s in mix.b.inputs if s.enabled and s.name == "B"][0])
-    out_img = [s for s in mix.b.outputs if s.enabled][0]
+
+    def mix(fac, a, b, blend="MIX", label=None):
+        m = g.node("ShaderNodeMix", label, props={"data_type": "RGBA", "blend_type": blend, "clamp_factor": True})
+        g.connect(fac, m.i("Factor"))
+        ins = [s for s in m.b.inputs if s.enabled and s.name in ("A", "B")]
+        g.connect(a, ins[0])
+        g.connect(b, ins[1])
+        return [s for s in m.b.outputs if s.enabled][0]
+
+    with g.frame("Haze: premultiplied geometry toward the horizon colour by mist depth"):
+        f = g.math("MULTIPLY", rl["Mist"], haze_amount, label="Haze Amount")
+        haze_premul = mix(1.0, (*srgb(haze_color), 1.0), rl["Alpha"], "MULTIPLY", label="Haze x Alpha")
+        hazed_rgb = mix(f, rl["Image"], haze_premul, label="Hazed")
+        # Mix also blends alpha; put the render's own antialiased alpha back
+        hazed = g.node("CompositorNodeSetAlpha", Image=hazed_rgb, Alpha=rl["Alpha"])
+        try:
+            g.connect("Replace Alpha", hazed.i("Type"))
+        except (KeyError, TypeError, ValueError):
+            pass
+    with g.frame("Sky: gradient by screen height, behind the geometry"):
+        coords = g.node("CompositorNodeImageCoordinates", Image=rl["Image"])
+        sep = g.separate(coords["Normalized"])
+        t = g.map_range(sep["Y"], 0.5, 0.78, 0.0, 1.0, interp="SMOOTHSTEP", label="Height above horizon")
+        sky = mix(t, (*srgb(sky_horizon), 1.0), (*srgb(sky_top), 1.0), label="Sky")
+        over = g.node("CompositorNodeAlphaOver")
+        ins = [s for s in over.b.inputs if s.enabled and s.type == "RGBA"]
+        g.connect(sky, ins[0])
+        g.connect(hazed.out, ins[1])
+    out_img = over.out
     if glare > 0:
         with g.frame("Soft glow on bright lanterns and highlights"):
             gl = g.node("CompositorNodeGlare")
-            for k, v in (("glare_type", "FOG_GLOW"), ("quality", "MEDIUM")):
-                if hasattr(gl.b, k):
-                    setattr(gl.b, k, v)
             g.connect(out_img, gl.i("Image"))
-            for name, v in (("Strength", glare), ("Threshold", 0.9), ("Mix", -1 + glare)):
+            for name, v in (("Type", "Fog Glow"), ("Quality", "Medium"), ("Strength", glare),
+                            ("Threshold", 0.9)):
                 try:
                     g.connect(v, gl.i(name))
-                except KeyError:
+                except (KeyError, TypeError, ValueError):
                     pass
             out_img = gl["Image"]
     g.output("Image", "COLOR", out_img)
     g.finish()
     sc.compositing_node_group = g.nt
-    if hasattr(sc.render, "use_compositing"):
-        sc.render.use_compositing = True
     return g.nt
+
+
+def ground(sc=None, size=600.0, color="#7E8A4E"):
+    """A plain meadow under overview shots, so a street seen from above sits in a landscape, not a void.
+    Not part of the generator; it only frames the transfer scenes."""
+    from street.materials.common import flat
+    sc = sc or bpy.context.scene
+    me = bpy.data.meshes.new(f"{sc.name} Ground")
+    h = size / 2
+    me.from_pydata([(-h, -h, -0.03), (h, -h, -0.03), (h, h, -0.03), (-h, h, -0.03)], [], [(0, 1, 2, 3)])
+    me.materials.append(flat("SS Meadow", srgb(color), 0.95))
+    ob = bpy.data.objects.new(f"{sc.name} Ground", me)
+    sc.collection.objects.link(ob)
+    return ob

@@ -177,7 +177,7 @@ def petals():
 def glass():
     """Lantern panes: warm glass that emits ss_color at ss_glow strength (flicker baked in by Geometry Nodes)."""
     M = _Mat("SS Lantern Glass")
-    M.set(Base_Color=lin((0.85, 0.55, 0.22)), Roughness=0.25,
+    M.set(Base_Color=lin((0.62, 0.42, 0.14)), Roughness=0.25,
           Emission_Color=M.attr("ss_color").outputs["Color"], Emission_Strength=M.attr("ss_glow").outputs["Fac"])
     return M.done()
 

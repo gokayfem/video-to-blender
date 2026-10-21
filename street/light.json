@@ -1,20 +1,23 @@
 {
  "sun_elev": 64.0,
  "sun_azim": 115.0,
- "strength": 6.0,
+ "strength": 7.0,
  "sun_color": "#FFD7A3",
  "sky_top": "#9EC6D5",
  "sky_horizon": "#E8D2BE",
- "sky_strength": 0.9,
+ "sky_strength": 0.7,
  "render": {
   "look": "Base Contrast",
-  "exposure": 0.3
+  "exposure": 0.8
  },
  "post": {
   "haze_color": "#E8D2BE",
-  "haze_start": 4.0,
-  "haze_depth": 150.0,
-  "haze_amount": 0.9,
-  "glare": 0.25
- }
+  "haze_start": 10.0,
+  "haze_depth": 160.0,
+  "haze_amount": 0.6,
+  "glare": 0.25,
+  "sky_top": "#9EC6D5",
+  "sky_horizon": "#E8D2BE"
+ },
+ "sun_angle": 5.0
 }
