@@ -29,6 +29,8 @@ def shoot():
         return None
     name = QUEUE.pop(0)
     win, area = big_area()
+    if name == "MODIFIER":
+        return shoot_modifier(win, area)
     ng = bpy.data.node_groups[name]
     shader = ng.bl_idname == "ShaderNodeTree"
     area.ui_type = "ShaderNodeTree" if shader else "GeometryNodeTree"
@@ -55,6 +57,26 @@ def shoot():
     bpy.app.timers.register(frame_all, first_interval=1.2)
     bpy.app.timers.register(capture, first_interval=2.0)
     return 3.0
+
+
+def shoot_modifier(win, area):
+    """The Properties editor on the street object's modifier tab: the artist's control surface."""
+    sc = bpy.context.scene
+    street = next(o for o in sc.objects if o.type == "MESH" and o.modifiers)
+    for o in sc.objects:
+        o.select_set(o == street)
+    bpy.context.view_layer.objects.active = street
+    area.ui_type = "PROPERTIES"
+    area.spaces.active.context = "MODIFIER"
+
+    def capture():
+        region = next(r for r in area.regions if r.type == "WINDOW")
+        with bpy.context.temp_override(window=win, area=area, region=region):
+            bpy.ops.screen.screenshot_area(filepath=str(OUT / "modifier_panel.png"))
+        print("SHOT modifier panel")
+        return None
+    bpy.app.timers.register(capture, first_interval=1.5)
+    return 2.5
 
 
 bpy.app.timers.register(shoot, first_interval=2.0)

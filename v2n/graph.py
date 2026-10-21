@@ -249,7 +249,34 @@ class Graph:
 
         return _F()
 
-    def finish(self):
+    def split_inputs(self):
+        """Give every frame its own Group Input node with only the sockets that frame uses (the rest hidden),
+        so a graph with many inputs reads frame by frame instead of as one fan of long links."""
+        gin = self._gin
+        for label, nodes, color in self._frames:
+            members = set(nodes)
+            links = [l for l in self.nt.links if l.from_node == gin and l.to_node in members]
+            if not links:
+                continue
+            local = self.nt.nodes.new("NodeGroupInput")
+            local.label = "Inputs"
+            nodes.insert(0, local)
+            for l in links:
+                src, dst = local.outputs[l.from_socket.identifier], l.to_socket
+                self.nt.links.remove(l)
+                self.nt.links.new(src, dst)
+            for s in local.outputs:
+                s.hide = not s.is_linked
+        if not any(s.is_linked for s in gin.outputs):
+            self.nt.nodes.remove(gin)
+            self._gin = None
+            return
+        for s in gin.outputs:
+            s.hide = not s.is_linked
+
+    def finish(self, split_inputs=True):
+        if split_inputs:
+            self.split_inputs()
         groups = [nodes for _, nodes, _ in self._frames if nodes]
         layout(self.nt, self._gin, self._gout, groups)
         for label, nodes, color in self._frames:
@@ -268,7 +295,7 @@ class Graph:
 
 def _node_h(n):
     """Estimated drawn height: header, one row per socket, extra rows for vector defaults and option widgets."""
-    rows = len(_enabled(n.outputs)) + len([s for s in _enabled(n.inputs) if not s.hide])
+    rows = len([s for s in _enabled(n.outputs) if not s.hide]) + len([s for s in _enabled(n.inputs) if not s.hide])
     rows += sum(2 for s in _enabled(n.inputs) if not s.is_linked and s.type in {"VECTOR", "ROTATION"})
     props = [p for p in n.bl_rna.properties if p.type == "ENUM" and not p.is_readonly
              and p.identifier not in {"warning_propagation", "color_tag"}]

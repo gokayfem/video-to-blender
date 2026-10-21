@@ -106,42 +106,42 @@ def build():
     used = {"Path", "Seed", "Time Scale", "Time Offset", *SHARED, *(f"Show {l}" for l, _ in parts),
             *(p[0] for p in PRIMARY)}
     for label, ng in parts:
-        with g.frame(f"{label}"):
+        with g.frame(f"{label}: its own inputs, Primary macros applied"):
             node = g.group(ng, label=label)
-        nodes[label] = node
-        for it in _iface_inputs(ng):
-            sock = next(s for s in node.b.inputs if s.identifier == it.identifier)
-            if it.name == "Curve":
-                g.connect(info["Geometry"], sock)
-            elif it.name == "Time":
-                g.connect(time, sock)
-            elif it.name in shared:
-                g.connect(shared[it.name], sock)
-            elif it.socket_type == "NodeSocketGeometry":
-                continue                                        # wired below (Anchors)
-            else:
-                panel = f"{label} > {it.parent.name}" if it.parent and it.parent.name else label
-                if it.name in PRIMARY_DIRECT:
-                    panel = "Primary"
-                kw = {}
-                for k, attr in (("min", "min_value"), ("max", "max_value"), ("subtype", "subtype")):
-                    if hasattr(it, attr):
-                        kw[k] = getattr(it, attr)
-                if kw.get("subtype") == "NONE":
-                    kw.pop("subtype")
-                default = getattr(it, "default_value", None)
-                if default is not None and hasattr(default, "__len__") and not isinstance(default, str):
-                    default = tuple(default)
-                stype = _TYPE_BY_SOCKET.get(it.socket_type, None)
-                if stype is None:
-                    continue
-                name = it.name if it.name not in used else f"{label} {it.name}"
-                used.add(name)
-                src = g.input(name, stype, default, desc=it.description, panel=panel, **kw)
-                if (label, it.name) in macro_targets:
-                    mname, op = macro_targets[(label, it.name)]
-                    src = g.math(op, src, macros[mname], label=f"{it.name} {op.lower()} {mname}")
-                g.connect(src, sock)
+            nodes[label] = node
+            for it in _iface_inputs(ng):
+                sock = next(s for s in node.b.inputs if s.identifier == it.identifier)
+                if it.name == "Curve":
+                    g.connect(info["Geometry"], sock)
+                elif it.name == "Time":
+                    g.connect(time, sock)
+                elif it.name in shared:
+                    g.connect(shared[it.name], sock)
+                elif it.socket_type == "NodeSocketGeometry":
+                    continue                                        # wired below (Anchors)
+                else:
+                    panel = f"{label} > {it.parent.name}" if it.parent and it.parent.name else label
+                    if it.name in PRIMARY_DIRECT:
+                        panel = "Primary"
+                    kw = {}
+                    for k, attr in (("min", "min_value"), ("max", "max_value"), ("subtype", "subtype")):
+                        if hasattr(it, attr):
+                            kw[k] = getattr(it, attr)
+                    if kw.get("subtype") == "NONE":
+                        kw.pop("subtype")
+                    default = getattr(it, "default_value", None)
+                    if default is not None and hasattr(default, "__len__") and not isinstance(default, str):
+                        default = tuple(default)
+                    stype = _TYPE_BY_SOCKET.get(it.socket_type, None)
+                    if stype is None:
+                        continue
+                    name = it.name if it.name not in used else f"{label} {it.name}"
+                    used.add(name)
+                    src = g.input(name, stype, default, desc=it.description, panel=panel, **kw)
+                    if (label, it.name) in macro_targets:
+                        mname, op = macro_targets[(label, it.name)]
+                        src = g.math(op, src, macros[mname], label=f"{it.name} {op.lower()} {mname}")
+                    g.connect(src, sock)
 
     if "Houses" in nodes and "Props" in nodes:
         anchors = [s for s in nodes["Houses"].b.outputs if s.name == "Anchors"]

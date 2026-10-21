@@ -34,7 +34,7 @@ SCENES = {
     "Transfer Spiral": dict(path="spiral", cam="top"),
 }
 CAM = json.loads((ROOT / "street" / "camera.json").read_text()) if (ROOT / "street" / "camera.json").exists() else {
-    "follow": {"lens": 20.0, "back": 2.5, "side": -0.15, "height": 0.895, "ahead": 8.0, "target_h": 0.895},
+    "follow": {"lens": 20.0, "back": 2.05, "side": -0.15, "height": 0.925, "ahead": 8.0, "target_h": 0.925},
     "high": {"lens": 32.0, "static": [52, -14, 34], "look_at": [0, 24, 0], "ground": True,
              "haze": {"haze_start": 12.0, "haze_depth": 220.0}},
     "top": {"lens": 35.0, "static": [0, -105, 90], "look_at": [0, 2, 0], "ground": True,
