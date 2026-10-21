@@ -149,9 +149,17 @@ def top_z(g, h):
     return mad(g, sub(g, h.storeys, 1.0), h.floor_h, h.ground_h)
 
 
+MAX_JETTIES = 2         # only the first two upper storeys step out; taller houses rise flush above them
+
+
+def jy(g, h, k):
+    """Facade plane of storey k: min(k, MAX_JETTIES) * jetty, so tall houses never lean over the street."""
+    return mul(g, mn(g, k, float(MAX_JETTIES)), h.jetty)
+
+
 def top_y(g, h):
-    """Facade plane of the top floor: (storeys - 1) * jetty."""
-    return mul(g, sub(g, h.storeys, 1.0), h.jetty)
+    """Facade plane of the top floor."""
+    return jy(g, h, sub(g, h.storeys, 1.0))
 
 
 # ---- SS House Boxes ------------------------------------------------------------------------------------------
@@ -173,8 +181,9 @@ def boxes():
     size = g.input("Size", "VECTOR", (1.0, 1.0, 1.0), subtype="XYZ", desc="Piece size along its local axes")
     rot = g.input("Rotation", "ROTATION", desc="Piece rotation in the house frame")
     color = g.input("Color", "COLOR", (0.8, 0.8, 0.8, 1.0), desc="Tint written to ss_color")
-    shape = g.input("Shape", "INT", 0, min=0, max=3,
-                    desc="0 box, 1 prism (ridge along X on top), 2 cylinder along Y, 3 half arch ring in XZ")
+    shape = g.input("Shape", "INT", 0, min=0, max=4,
+                    desc="0 box, 1 prism (ridge along X on top), 2 cylinder along Y, 3 half arch ring in XZ, "
+                         "4 arched opening (Center at the springing line, Size = width, depth, straight height)")
     mat = g.input("Material", "MATERIAL", desc="Material of the pieces")
     with g.frame("Chamfered unit box: hull of three cubes each inset on two axes; each corner remembers its "
                  "octant (p_s) and which axes are inset (p_in)"):
@@ -202,7 +211,10 @@ def boxes():
                       Height=0.14)["Curve"]
         ring = g.node("GeometryNodeCurveToMesh", Curve=arc, **{"Profile Curve": prof, "Fill Caps": True})["Mesh"]
         ring = g.node("GeometryNodeTransform", Geometry=ring, Rotation=(math.pi / 2, 0.0, 0.0))["Geometry"]
-        unit = iswitch(g, shape, [rbox, prism, cyl, ring], "GEOMETRY")
+        ucyl = xyz(g, g.node("GeometryNodeInputPosition")["Position"])
+        archo = g.node("GeometryNodeSetPosition", Geometry=cyl, Selection=cmp(g, ucyl[2], -0.001, "LESS_THAN"),
+                       Position=vec(g, ucyl[0], ucyl[1], -0.5))["Geometry"]     # lower half -> flat bottom
+        unit = iswitch(g, shape, [rbox, prism, cyl, ring, archo], "GEOMETRY")
         pos = g.node("GeometryNodeInputPosition")["Position"]
         unit = store(g, unit, "ss_unit", g.vmath("ADD", pos, (0.5, 0.5, 0.5)), "FLOAT_VECTOR")
         unit = g.node("GeometryNodeSetMaterial", Geometry=unit, Material=mat)["Geometry"]
@@ -228,6 +240,16 @@ def boxes():
                       g.node("FunctionNodeRotateVector", Vector=loc, Rotation=attr(g, "p_rot", "QUATERNION"))["Vector"])
         inst = g.node("GeometryNodeSetPosition", Geometry=inst, Selection=cmp(g, shape, 0.5, "LESS_THAN"),
                       Position=new)["Geometry"]
+    with g.frame("Arched openings: one closed mesh, round head of radius width/2, straight sides Size.z tall "
+                 "(a single solid, so the boolean never sees two overlapping cutters)"):
+        ux, uy, uz = xyz(g, g.vmath("SUBTRACT", attr(g, "ss_unit", "FLOAT_VECTOR"), (0.5, 0.5, 0.5)))
+        head = cmp(g, uz, -0.01)
+        az = sw(g, head, neg(g, sz_), mul(g, uz, sx_))
+        aloc = vec(g, mul(g, ux, sx_), mul(g, uy, sy_), az)
+        anew = g.vmath("ADD", attr(g, "p_center", "FLOAT_VECTOR"),
+                       g.node("FunctionNodeRotateVector", Vector=aloc, Rotation=attr(g, "p_rot", "QUATERNION"))["Vector"])
+        inst = g.node("GeometryNodeSetPosition", Geometry=inst, Selection=cmp(g, shape, 4.0, "EQUAL"),
+                      Position=anew)["Geometry"]
         for pat in ("h_*", "w_*", "t_*", "p_*"):
             inst = g.node("GeometryNodeRemoveAttribute", **{"Pattern Mode": "Wildcard"}, Geometry=inst,
                           Name=pat)["Geometry"]
@@ -272,6 +294,8 @@ def window():
         hc = attr(g, "h_color", "FLOAT_COLOR")
         yb = sub(g, cy, REVEAL)                         # back of the reveal
         yfr = add(g, yb, 0.075)                         # frame plane
+        fcol = sw(g, attr(g, "w_dark", "BOOLEAN"), FRAME_COLOR,
+                  g.vmath("SCALE", attr(g, "h_door_color", "FLOAT_COLOR"), scale=0.45), "RGBA")
     with g.frame("Reveal cutter (subtracted from the wall) and the glass deep in it"):
         cut = piece(g, pts, vec(g, cx, half(g, add(g, cy, add(g, yb, 0.06))), cz),
                     vec(g, ww, add(g, REVEAL, 0.06), wh), hc, "plaster")
@@ -284,14 +308,14 @@ def window():
         fz = iswitch(g, q, [cz, cz, sub(g, add(g, cz, hh), ft / 2), add(g, sub(g, cz, hh), ft / 2)])
         fsx = iswitch(g, q, [ft, ft, ww, ww])
         fsz = iswitch(g, q, [wh, wh, ft, ft])
-        frame_ = piece(g, fpts, vec(g, fx, yfr, fz), vec(g, fsx, 0.08, fsz), FRAME_COLOR, "frame")
+        frame_ = piece(g, fpts, vec(g, fx, yfr, fz), vec(g, fsx, 0.08, fsz), fcol, "frame")
         tp, tq = dup(g, pts, 2)
         tz = mad(g, wh, sub(g, mul(g, tq, 0.36), 0.18), cz)       # transoms at -0.18 and +0.18 of the height
-        tran = piece(g, tp, vec(g, cx, yfr, tz), vec(g, ww, 0.06, 0.045), FRAME_COLOR, "frame")
+        tran = piece(g, tp, vec(g, cx, yfr, tz), vec(g, ww, 0.06, 0.045), fcol, "frame")
         panes = attr(g, "w_panes", "INT")
         mpts, mq = dup(g, pts, sub(g, panes, 1.0))
         mxp = mad(g, div(g, add(g, mq, 1.0), panes), ww, sub(g, cx, hw))
-        mull = piece(g, mpts, vec(g, mxp, yfr, cz), vec(g, 0.045, 0.06, wh), FRAME_COLOR, "frame")
+        mull = piece(g, mpts, vec(g, mxp, yfr, cz), vec(g, 0.045, 0.06, wh), fcol, "frame")
     with g.frame("Sill board under the window"):
         sill = piece(g, pts, vec(g, cx, add(g, cy, 0.03), sub(g, sub(g, cz, hh), 0.04)),
                      vec(g, add(g, ww, 0.2), 0.22 + 0.0, 0.08), timber_col, "timber")
@@ -318,8 +342,9 @@ def window():
     return _WINDOW
 
 
-def window_points(g, pts, center, size, panes, shutter, surround=False):
+def window_points(g, pts, center, size, panes, shutter, surround=False, dark=False):
     pts = store(g, pts, "w_surround", surround, "BOOLEAN")
+    pts = store(g, pts, "w_dark", dark, "BOOLEAN")
     pts = store(g, pts, "w_center", center, "FLOAT_VECTOR")
     pts = store(g, pts, "w_size", size, "FLOAT_VECTOR")
     pts = store(g, pts, "w_panes", panes, "INT")
@@ -351,7 +376,7 @@ def body():
         h = House(g)
         z0 = sw(g, cmp(g, k, 0.5, "LESS_THAN"), floor_base(g, h, k), -1.0)
         z1 = sub(g, floor_top(g, h, k), 0.004)
-        yf = mul(g, k, h.jetty)
+        yf = jy(g, h, k)
         walls = piece(g, fl, vec(g, 0.0, half(g, sub(g, yf, h.depth)), half(g, add(g, z0, z1))),
                       vec(g, add(g, h.width, 0.04), add(g, yf, h.depth), sub(g, z1, z0)), h.color, "plaster")
     with g.frame("Bressummer at every floor line and the wall plate under the eaves"):
@@ -359,7 +384,7 @@ def body():
         h = House(g)
         k1 = add(g, k, 1.0)
         z = floor_base(g, h, k1)
-        y = mul(g, k1, h.jetty)
+        y = jy(g, h, k1)
         timbered = cmp(g, h.timber, 0.5)
         beams = piece(g, bm, vec(g, 0.0, sub(g, y, 0.07), z),
                       vec(g, add(g, h.width, 0.04), 0.18, mul(g, bw, 1.2)), tcol, "timber", sel=timbered)
@@ -367,29 +392,31 @@ def body():
                     vec(g, add(g, h.width, 0.04), 0.18, bw), tcol, "timber", sel=timbered)
     with g.frame("Joist ends: short stubs under each jetty (jettied houses only)"):
         nj = mul(g, mx(g, g.math("ROUND", div(g, attr(g, "h_width"), 0.9)), 2.0), cmp(g, attr(g, "h_jetty"), 0.05))
-        jp, q = dup(g, houses, mul(g, sub(g, attr(g, "h_storeys", "INT"), 1.0), nj))
+        nja = mn(g, sub(g, attr(g, "h_storeys", "INT"), 1.0), float(MAX_JETTIES))
+        jp, q = dup(g, houses, mul(g, nja, nj))
         h = House(g)
         nj2 = mx(g, g.math("ROUND", div(g, h.width, 0.9)), 2.0)
         kk = add(g, g.math("FLOOR", div(g, q, nj2)), 1.0)
         jj = g.math("FLOORED_MODULO", q, nj2)
         jx = sub(g, mul(g, div(g, add(g, jj, 0.5), nj2), h.width), half(g, h.width))
-        y0 = mul(g, sub(g, kk, 1.0), h.jetty)
-        y1 = mul(g, kk, h.jetty)
+        y0 = jy(g, h, sub(g, kk, 1.0))
+        y1 = jy(g, h, kk)
         joists = piece(g, jp, vec(g, jx, half(g, add(g, y0, y1)), sub(g, floor_base(g, h, kk), 0.15)),
                        vec(g, 0.09, sub(g, y1, y0), 0.09), tcol, "timber")
     with g.frame("Carved corbels: angled struts under each jetty at the two party walls (jettied houses)"):
         nc = mul(g, 2.0, cmp(g, attr(g, "h_jetty"), 0.05))
-        cp, q = dup(g, houses, mul(g, sub(g, attr(g, "h_storeys", "INT"), 1.0), nc))
+        nca = mn(g, sub(g, attr(g, "h_storeys", "INT"), 1.0), float(MAX_JETTIES))
+        cp, q = dup(g, houses, mul(g, nca, nc))
         h = House(g)
         kk = add(g, g.math("FLOOR", div(g, q, 2.0)), 1.0)
         jj = g.math("FLOORED_MODULO", q, 2.0)
         cx = mul(g, sub(g, mul(g, jj, 2.0), 1.0), sub(g, half(g, h.width), 0.1))
         zb = floor_base(g, h, kk)
-        cy, cz, cl, crot = strut_yz(g, mul(g, sub(g, kk, 1.0), h.jetty), sub(g, zb, 0.5),
-                                    sub(g, mul(g, kk, h.jetty), 0.06), sub(g, zb, 0.16))
+        cy, cz, cl, crot = strut_yz(g, jy(g, h, sub(g, kk, 1.0)), sub(g, zb, 0.5),
+                                    sub(g, jy(g, h, kk), 0.06), sub(g, zb, 0.16))
         corb = piece(g, cp, vec(g, cx, add(g, cy, 0.03), cz), vec(g, bw, 0.12, add(g, cl, 0.06)),
                      tcol, "timber", rot=crot)
-        pad = piece(g, cp, vec(g, cx, add(g, mul(g, sub(g, kk, 1.0), h.jetty), 0.03), sub(g, zb, 0.6)),
+        pad = piece(g, cp, vec(g, cx, add(g, jy(g, h, sub(g, kk, 1.0)), 0.03), sub(g, zb, 0.6)),
                     vec(g, mul(g, bw, 1.15), 0.08, 0.14), tcol, "timber")
     with g.frame("Stone plinth (houses with h_plinth): two runs, either side of the door"):
         pp, q = dup(g, houses, sw(g, attr(g, "h_plinth", "BOOLEAN"), 0, 2, "INT"))
@@ -428,7 +455,7 @@ def timber():
         z0 = floor_base(g, h, tk)
         zc0 = sw(g, cmp(g, tk, 0.5, "LESS_THAN"), add(g, z0, 0.1), h.level)
         z1 = sub(g, floor_top(g, h, tk), 0.1)
-        yf = mul(g, tk, h.jetty)
+        yf = jy(g, h, tk)
         fl = store(g, fl, "t_z0", zc0)
         fl = store(g, fl, "t_z1", z1)
         fl = store(g, fl, "t_y", yf)
@@ -503,7 +530,7 @@ def windows():
         x = sub(g, mul(g, div(g, add(g, j, 0.5), h.cols), h.width), half(g, h.width))
         z = add(g, floor_base(g, h, f), mul(g, h.floor_h, 0.5))
         plain = cmp(g, attr(g, "h_timber", "INT"), 0.5, "LESS_THAN")
-        up = window_points(g, up, vec(g, x, mul(g, f, h.jetty), z), vec(g, h.win_w, 0.0, h.win_h), 2, h.shutter,
+        up = window_points(g, up, vec(g, x, jy(g, h, f), z), vec(g, h.win_w, 0.0, h.win_h), 2, h.shutter,
                            plain)
         up = store(g, up, "w_floor", f, "INT")
     with g.frame("Ground windows: h_gwin windows spread over the span beside the door"):
@@ -544,17 +571,18 @@ def doors():
         arch = h.door_arch
         hr = sub(g, dh, sw(g, arch, 0.0, half(g, dw)))       # height of the straight part
         ycut = half(g, sub(g, 0.06, DOOR_REVEAL))
-    with g.frame("Cut the opening: a box, plus a cylinder for the arch"):
+    with g.frame("Cut the opening: a box for square doors, one arched solid for arched doors"):
+        square = g.node("FunctionNodeBooleanMath", props={"operation": "NOT"}, Boolean=arch)["Boolean"]
         c1 = piece(g, houses, vec(g, dx, ycut, add(g, lv, half(g, hr))), vec(g, dw, DOOR_REVEAL + 0.06, hr),
-                   h.color, "plaster")
-        c2 = piece(g, houses, vec(g, dx, ycut, add(g, lv, hr)), vec(g, dw, DOOR_REVEAL + 0.06, dw), h.color,
-                   "plaster", sel=arch, shape=2)
+                   h.color, "plaster", sel=square)
+        c2 = piece(g, houses, vec(g, dx, ycut, add(g, lv, hr)), vec(g, dw, DOOR_REVEAL + 0.06, hr), h.color,
+                   "plaster", sel=arch, shape=4)
     with g.frame("Door leaf set back in the reveal, painted planks, iron handle"):
         yl = -DOOR_REVEAL + 0.04
         l1 = piece(g, houses, vec(g, dx, yl, add(g, lv, half(g, hr))), vec(g, dw, 0.06, hr), h.door_color,
-                   "painted")
-        l2 = piece(g, houses, vec(g, dx, yl - 0.006, add(g, lv, hr)), vec(g, dw, 0.06, dw), h.door_color,
-                   "painted", sel=arch, shape=2)
+                   "painted", sel=square)
+        l2 = piece(g, houses, vec(g, dx, yl, add(g, lv, hr)), vec(g, dw, 0.06, hr), h.door_color,
+                   "painted", sel=arch, shape=4)
         hx = sub(g, dx, mul(g, h.door_side, sub(g, half(g, dw), 0.13)))
         handle = piece(g, houses, vec(g, hx, yl + 0.05, add(g, lv, 0.95)), (0.05, 0.05, 0.12), IRON_COLOR,
                        "frame")
@@ -582,18 +610,28 @@ def doors():
         h = House(g)
         ring = piece(g, houses, vec(g, h.door_x, 0.02, add(g, h.level, sub(g, h.door_h, half(g, h.door_w)))),
                      vec(g, h.door_w, h.door_w, h.door_w), STONE_COLOR, "stone", sel=h.door_arch, shape=3)
-    with g.frame("Shopfront: a wide window with many panes in the span beside the door, fascia above"):
+    with g.frame("Shopfront: a small-paned window in dark painted frames on a panelled stall riser, between "
+                 "two timber pilasters, under a painted fascia"):
         sp, _ = dup(g, houses, sw(g, attr(g, "h_shop", "BOOLEAN"), 0, 1, "INT"))
         h = House(g)
-        sww = mn(g, mul(g, h.span_len, 0.92), 2.7)
-        zb = add(g, h.level, 0.35)
-        zt = sub(g, h.ground_h, 0.42)
+        sww = mn(g, mul(g, h.span_len, 0.82), 2.1)
+        zb = add(g, h.level, 0.62)
+        zt = sub(g, h.ground_h, 0.45)
         sp = window_points(g, sp, vec(g, h.span_c, 0.0, half(g, add(g, zb, zt))), vec(g, sww, 0.0, sub(g, zt, zb)),
-                           g.math("ROUND", mx(g, div(g, sww, 0.42), 2.0)), False)
+                           g.math("ROUND", mx(g, div(g, sww, 0.3), 2.0)), False, dark=True)
         shop = g.group(window(), Windows=sp, **{"Timber Color": tcol})
         h = House(g)
+        dark = g.vmath("SCALE", h.door_color, scale=0.55)
         fascia = piece(g, sp, vec(g, h.span_c, 0.05, sub(g, h.ground_h, 0.25)),
                        vec(g, add(g, sww, 0.3), 0.1, 0.2), h.door_color, "painted")
+        riser = piece(g, sp, vec(g, h.span_c, 0.03, half(g, add(g, h.level, sub(g, zb, 0.1)))),
+                      vec(g, add(g, sww, 0.1), 0.08, sub(g, sub(g, zb, 0.1), h.level)), dark, "painted")
+        pp, pq = dup(g, sp, 2)
+        h = House(g)
+        px = add(g, h.span_c, mul(g, sub(g, mul(g, pq, 2.0), 1.0), add(g, half(g, sww), 0.1)))
+        ptop = sub(g, h.ground_h, 0.15)
+        pil = piece(g, pp, vec(g, px, 0.03, half(g, add(g, h.level, ptop))),
+                    vec(g, 0.14, 0.12, sub(g, ptop, h.level)), tcol, "timber")
     with g.frame("Anchors: 3 door base, 4 shopfront top, 5 lantern beside the door, 6 sign bracket"):
         h = House(g)
         a3 = anchor_points(g, houses, 3, vec(g, h.door_x, 0.0, h.level), h.door_w, seed)
@@ -615,7 +653,7 @@ def doors():
         a7 = anchor_points(g, vp, 7, vec(g, half(g, add(g, a, b)), 0.08, h.level), ln, seed)
         a7 = g.node("GeometryNodeDeleteGeometry", props={"domain": "POINT"}, Geometry=a7,
                     Selection=cmp(g, attr(g, "ss_width"), 0.35, "LESS_THAN"))["Geometry"]
-    g.output("Geometry", "GEOMETRY", join(g, l1, l2, handle, sq, jamb, ring, shop["Geometry"], fascia))
+    g.output("Geometry", "GEOMETRY", join(g, l1, l2, handle, sq, jamb, ring, shop["Geometry"], fascia, riser, pil))
     g.output("Cutters", "GEOMETRY", join(g, c1, c2, shop["Cutters"]))
     g.output("Anchors", "GEOMETRY", join(g, a3, a4, a5, a6, a7))
     return g.finish()
