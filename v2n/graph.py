@@ -1,0 +1,281 @@
+"""Small builder for native Blender node trees (Geometry Nodes and Shader Nodes).
+
+Every node group in the project is written against this module so that graphs are built, linked, laid out and
+inspected the same way. It runs inside Blender (``bpy``); nothing here is evaluated outside it.
+
+    from v2n.graph import Graph
+    g = Graph("SS Example", kind="GEOMETRY")
+    geo = g.input("Geometry", "GEOMETRY")
+    width = g.input("Width", "FLOAT", 4.0, min=0.5, max=20, subtype="DISTANCE", panel="Street",
+                    desc="Curb-to-curb width of the cobbled road")
+    grid = g.node("GeometryNodeMeshGrid", **{"Size X": width, "Vertices X": 32})
+    g.output("Geometry", "GEOMETRY", grid["Mesh"])
+    g.finish()            # auto-layout + frames
+
+Values passed for inputs may be: a constant, a socket, a ``Node`` (its first enabled output), or ``None`` (leave).
+Sockets are found by name among *enabled* sockets; use ``"Name#k"`` for the k-th enabled socket with that name
+(Math nodes have three inputs named "Value"), or an integer index into the enabled list.
+"""
+import bpy
+
+SOCKET_TYPES = {
+    "FLOAT": "NodeSocketFloat", "INT": "NodeSocketInt", "BOOL": "NodeSocketBool", "VECTOR": "NodeSocketVector",
+    "COLOR": "NodeSocketColor", "GEOMETRY": "NodeSocketGeometry", "MATERIAL": "NodeSocketMaterial",
+    "OBJECT": "NodeSocketObject", "COLLECTION": "NodeSocketCollection", "STRING": "NodeSocketString",
+    "ROTATION": "NodeSocketRotation", "SHADER": "NodeSocketShader", "MENU": "NodeSocketMenu",
+    "MATRIX": "NodeSocketMatrix",
+}
+TREE_TYPES = {"GEOMETRY": "GeometryNodeTree", "SHADER": "ShaderNodeTree"}
+
+
+def _enabled(sockets):
+    return [s for s in sockets if s.enabled]
+
+
+def find_socket(sockets, key):
+    """Resolve ``key`` (name, "name#k" or index) against the enabled sockets of a node."""
+    live = _enabled(sockets)
+    if isinstance(key, int):
+        return live[key]
+    name, _, k = key.partition("#")
+    hits = [s for s in live if s.name == name] or [s for s in live if s.identifier == name]
+    if not hits:
+        raise KeyError(f"no enabled socket {key!r}; have {[s.name for s in live]}")
+    return hits[int(k) if k else 0]
+
+
+class Node:
+    """Thin wrapper: ``n["Out"]`` is an output socket, ``n.i("In")`` an input socket."""
+
+    def __init__(self, graph, bnode):
+        self.g, self.b = graph, bnode
+
+    def __getitem__(self, key):
+        return find_socket(self.b.outputs, key)
+
+    def i(self, key):
+        return find_socket(self.b.inputs, key)
+
+    @property
+    def out(self):
+        return _enabled(self.b.outputs)[0]
+
+    def set(self, **inputs):
+        for k, v in inputs.items():
+            self.g.connect(v, self.i(k))
+        return self
+
+
+class Graph:
+    def __init__(self, name, kind="GEOMETRY", description="", modifier=False):
+        """Create (or clear and rebuild) the node group ``name``. ``kind`` is GEOMETRY or SHADER."""
+        tree_type = TREE_TYPES[kind]
+        ng = bpy.data.node_groups.get(name)
+        if ng is None or ng.bl_idname != tree_type:
+            ng = bpy.data.node_groups.new(name, tree_type)
+        ng.nodes.clear()
+        ng.interface.clear()
+        ng.description = description
+        if kind == "GEOMETRY" and modifier and hasattr(ng, "is_modifier"):
+            ng.is_modifier = True
+        self.kind, self.nt = kind, ng
+        self._panels = {}
+        self._gin = ng.nodes.new("NodeGroupInput")
+        self._gout = ng.nodes.new("NodeGroupOutput")
+        self._frames = []          # (label, [nodes], color)
+        self._current_frame = None
+
+    # ---- interface -------------------------------------------------------------------------------------------
+    def _panel(self, name):
+        if name is None:
+            return None
+        if name not in self._panels:
+            self._panels[name] = self.nt.interface.new_panel(name)
+        return self._panels[name]
+
+    def input(self, name, stype, default=None, min=None, max=None, desc="", panel=None, subtype=None,
+              hide_value=False, menu=None):
+        """Declare a group input and return its socket on the Group Input node."""
+        s = self.nt.interface.new_socket(name, in_out="INPUT", socket_type=SOCKET_TYPES[stype],
+                                         parent=self._panel(panel))
+        s.description = desc
+        if subtype and hasattr(s, "subtype"):
+            s.subtype = subtype
+        if default is not None and hasattr(s, "default_value"):
+            s.default_value = default
+        if min is not None and hasattr(s, "min_value"):
+            s.min_value = min
+        if max is not None and hasattr(s, "max_value"):
+            s.max_value = max
+        if hide_value:
+            s.hide_value = True
+        return self._gin.outputs[s.identifier]
+
+    def output(self, name, stype, value=None, desc=""):
+        s = self.nt.interface.new_socket(name, in_out="OUTPUT", socket_type=SOCKET_TYPES[stype])
+        s.description = desc
+        sock = self._gout.inputs[s.identifier]
+        if value is not None:
+            self.connect(value, sock)
+        return sock
+
+    # ---- nodes -----------------------------------------------------------------------------------------------
+    def node(self, bl_idname, label=None, props=None, **inputs):
+        """Add a node. ``props`` sets node properties (operation, data_type, domain...) BEFORE inputs are
+        resolved, because properties change which sockets are enabled. Keyword inputs use socket names; names
+        with spaces go through ``**{"Size X": ...}``."""
+        b = self.nt.nodes.new(bl_idname)
+        for k, v in (props or {}).items():
+            setattr(b, k, v)
+        if label:
+            b.label = label
+        n = Node(self, b)
+        for k, v in inputs.items():
+            self.connect(v, n.i(k))
+        if self._current_frame is not None:
+            self._current_frame[1].append(b)
+        return n
+
+    def group(self, tree, label=None, **inputs):
+        """Instance another node group (a ``Graph`` or a bpy node group)."""
+        tree = tree.nt if isinstance(tree, Graph) else tree
+        idname = "GeometryNodeGroup" if self.kind == "GEOMETRY" else "ShaderNodeGroup"
+        b = self.nt.nodes.new(idname)
+        b.node_tree = tree
+        b.label = label or ""
+        n = Node(self, b)
+        for k, v in inputs.items():
+            self.connect(v, n.i(k))
+        if self._current_frame is not None:
+            self._current_frame[1].append(b)
+        return n
+
+    def connect(self, value, to_socket):
+        if value is None:
+            return
+        if isinstance(value, Node):
+            value = value.out
+        if isinstance(value, bpy.types.NodeSocket):
+            self.nt.links.new(value, to_socket)
+            return
+        if isinstance(value, bpy.types.ID) or value is None:
+            to_socket.default_value = value
+            return
+        if isinstance(value, (list, tuple)):
+            dv = to_socket.default_value
+            n = len(dv)
+            v = list(value) + [1.0] * (n - len(value))
+            to_socket.default_value = v[:n]
+            return
+        to_socket.default_value = value
+
+    # ---- math shorthands (the commonest nodes, kept terse so graphs read like formulas) -----------------------
+    def math(self, op, a=None, b=None, c=None, label=None, clamp=False):
+        mid = "ShaderNodeMath"
+        n = self.node(mid, label, props={"operation": op, "use_clamp": clamp})
+        for k, v in ((0, a), (1, b), (2, c)):
+            if v is not None and k < len(_enabled(n.b.inputs)):
+                self.connect(v, _enabled(n.b.inputs)[k])
+        return n
+
+    def vmath(self, op, a=None, b=None, c=None, label=None, scale=None):
+        n = self.node("ShaderNodeVectorMath", label, props={"operation": op})
+        ins = [s for s in _enabled(n.b.inputs) if s.name != "Scale"]
+        for k, v in enumerate((a, b, c)):
+            if v is not None and k < len(ins):
+                self.connect(v, ins[k])
+        if scale is not None:
+            self.connect(scale, n.i("Scale"))
+        return n
+
+    def combine(self, x=0.0, y=0.0, z=0.0, label=None):
+        return self.node("ShaderNodeCombineXYZ", label, X=x, Y=y, Z=z)
+
+    def separate(self, v, label=None):
+        return self.node("ShaderNodeSeparateXYZ", label, Vector=v)
+
+    def mix(self, fac, a, b, data_type="FLOAT", label=None, clamp=True):
+        n = self.node("ShaderNodeMix", label, props={"data_type": data_type, "clamp_factor": clamp})
+        n.set(Factor=fac, A=a, B=b)
+        return n
+
+    def map_range(self, v, a0, a1, b0, b1, clamp=True, interp="LINEAR", label=None):
+        n = self.node("ShaderNodeMapRange", label, props={"interpolation_type": interp, "clamp": clamp})
+        return n.set(Value=v, **{"From Min": a0, "From Max": a1, "To Min": b0, "To Max": b1})
+
+    def value(self, v, label=None):
+        n = self.node("ShaderNodeValue", label)
+        n.b.outputs[0].default_value = v
+        return n
+
+    # ---- organisation ----------------------------------------------------------------------------------------
+    def frame(self, label, color=None):
+        """Context manager: nodes created inside are wrapped in a labelled frame.
+
+            with g.frame("Parcels: split each side into houses"):
+                ...
+        """
+        graph = self
+
+        class _F:
+            def __enter__(self_):
+                graph._current_frame = (label, [], color)
+                return self_
+
+            def __exit__(self_, *a):
+                graph._frames.append(graph._current_frame)
+                graph._current_frame = None
+
+        return _F()
+
+    def finish(self):
+        layout(self.nt, self._gin, self._gout)
+        for label, nodes, color in self._frames:
+            if not nodes:
+                continue
+            f = self.nt.nodes.new("NodeFrame")
+            f.label = label
+            f.label_size = 18
+            f.shrink = True
+            if color:
+                f.use_custom_color, f.color = True, color
+            for b in nodes:
+                b.parent = f
+        return self.nt
+
+
+def layout(nt, gin=None, gout=None, dx=260, dy=40):
+    """Column layout by longest path from sources: readable left-to-right data flow without manual coordinates."""
+    nodes = [n for n in nt.nodes if n.bl_idname != "NodeFrame"]
+    preds = {n: set() for n in nodes}
+    for l in nt.links:
+        if l.from_node in preds and l.to_node in preds:
+            preds[l.to_node].add(l.from_node)
+    depth = {}
+
+    def d(n, stack=()):
+        if n in depth:
+            return depth[n]
+        if n in stack:
+            return 0
+        depth[n] = 0 if not preds[n] else 1 + max(d(p, stack + (n,)) for p in preds[n])
+        return depth[n]
+
+    for n in nodes:
+        d(n)
+    if gin is not None:
+        depth[gin] = 0
+    if gout is not None:
+        depth[gout] = max(depth.values(), default=0) + 1
+    cols = {}
+    for n in nodes:
+        cols.setdefault(depth[n], []).append(n)
+    for c in sorted(cols):
+        ns = cols[c]
+        # keep each column ordered by the mean height of its sources so links cross less
+        ns.sort(key=lambda n: (sum(p.location.y for p in preds[n]) / len(preds[n])) if preds[n] else 0, reverse=True)
+        y = 0
+        for n in ns:
+            n.location = (c * dx, y)
+            visible_in = [s for s in _enabled(n.inputs) if not s.hide]
+            y -= 60 + 22 * (len(_enabled(n.outputs)) + len(visible_in)) + dy
