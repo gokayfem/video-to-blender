@@ -1,11 +1,23 @@
 {
-  "name": "blender-node-skills",
-  "displayName": "Blender Node Skills",
+  "name": "video-to-blender",
+  "displayName": "Video to Blender",
   "version": "0.1.0",
-  "description": "Procedural Blender node systems skill: build Geometry Nodes, Shader Nodes and compositor graphs from Python with a tested node-group library, templates, checker and validation tools.",
-  "author": { "name": "gokayfem", "url": "https://github.com/gokayfem" },
-  "homepage": "https://github.com/gokayfem/blender-node-skills",
-  "repository": "https://github.com/gokayfem/blender-node-skills",
+  "description": "Turn a reference video, image or idea into an editable procedural Blender node system: Geometry Nodes, Shader Nodes, simulation zones and compositor graphs built from Python, with a tested node-group library, templates, checker and validation tools.",
+  "author": {
+    "name": "gokayfem",
+    "url": "https://github.com/gokayfem"
+  },
+  "homepage": "https://github.com/gokayfem/video-to-blender",
+  "repository": "https://github.com/gokayfem/video-to-blender",
   "license": "MIT",
-  "keywords": ["blender", "geometry-nodes", "shader-nodes", "procedural", "bpy", "node-graph", "simulation", "generative"]
+  "keywords": [
+    "blender",
+    "geometry-nodes",
+    "shader-nodes",
+    "procedural",
+    "bpy",
+    "video-to-3d",
+    "node-graph",
+    "simulation"
+  ]
 }

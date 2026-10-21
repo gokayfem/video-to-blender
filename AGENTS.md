@@ -59,6 +59,8 @@ Blender 5.2+ is required (`$BLENDER`, `blender` on PATH, or the macOS app bundle
 
 - Modifier inputs are not ID properties: use `nodekit.inspect.set_modifier_inputs(mod, {"Name": v})`
   (`mod.properties.inputs.<identifier>.value`).
+- Never keep a modifier input slot (`mod.properties.inputs.<id>`) across `set_modifier_inputs` or any interface
+  change: the pointer goes stale and reading it crashes Blender. Fetch it again.
 - A shared group rebuilt by a second module clears its interface and silently unlinks every earlier user; shared
   builders are build-once (`@nodegroup` does this; `nodekit.graph.once` for anything else).
 - `ShaderNodeMix` has several sockets named A/B; `Graph.mix` and `find_socket` pick the enabled ones.

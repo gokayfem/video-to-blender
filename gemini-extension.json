@@ -1,5 +1,5 @@
 {
-  "name": "blender-node-skills",
+  "name": "video-to-blender",
   "version": "0.1.0",
-  "description": "Procedural Blender node systems skill with a tested node-group library, graph builder, checker and validation tools."
+  "description": "Turn a reference video, image or idea into an editable procedural Blender node system, with a tested node-group library, graph builder, checker and validation tools."
 }

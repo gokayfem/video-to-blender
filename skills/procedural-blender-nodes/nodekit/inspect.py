@@ -118,11 +118,18 @@ def _slot(mod, ident):
 
 
 def set_modifier_inputs(mod, values):
+    """Set modifier inputs by name. A value of ``{"attribute": "name"}`` switches a field input to read that
+    named attribute (attribute mode); ``{"value": x}`` switches it back to a plain value."""
     ids = modifier_inputs(mod)
     for name, v in values.items():
         if name not in ids:
             raise KeyError(f"{mod.node_group.name} has no input {name!r}")
         slot = _slot(mod, ids[name])
+        if isinstance(v, dict):
+            if "attribute" in v:
+                slot.type, slot.attribute_name = "ATTRIBUTE", v["attribute"]
+                continue
+            slot.type, v = "VALUE", v["value"]
         if isinstance(v, str) and not isinstance(slot.value, str):
             v = bpy.data.objects.get(v) or bpy.data.materials.get(v) or bpy.data.collections.get(v)
         slot.value = v

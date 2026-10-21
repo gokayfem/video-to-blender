@@ -1,0 +1,148 @@
+name: evals
+
+# Runs evals/ with `claude plugin eval`: every case with the plugin and again without it. Every run is a paid model
+# call billed to the ANTHROPIC_API_KEY secret, so this workflow only runs when started by hand. See evals/README.md.
+on:
+  workflow_dispatch:
+    inputs:
+      case:
+        description: "Case glob for --case (empty runs every case)"
+        required: false
+        default: ""
+      runs:
+        description: "Runs per case per arm"
+        required: false
+        default: "3"
+      model:
+        description: "Model under test"
+        required: false
+        default: "claude-sonnet-5-5"
+      judge_model:
+        description: "Judge model for llm graders"
+        required: false
+        default: "claude-haiku-5-5"
+      threshold:
+        description: "A case passes when its with-plugin score is at least this"
+        required: false
+        default: "0.8"
+      max_cost_usd:
+        description: "Ceiling on the list-price cost estimate, in USD"
+        required: false
+        default: "60"
+
+permissions:
+  contents: read
+
+env:
+  BLENDER_VERSION: "5.2.2"
+  BLENDER_SERIES: "5.2"
+  # From https://download.blender.org/release/Blender5.2/blender-5.2.2.sha256
+  BLENDER_SHA256: "84098912789dc450e95697c4184fb8a90acbe5111c2ba4aede3fecb57806a168"
+
+concurrency:
+  group: evals
+
+jobs:
+  eval:
+    name: plugin eval, with vs without the plugin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate the suite
+        run: python3 tests/check_evals.py
+      - name: Cache Blender
+        id: cache-blender
+        uses: actions/cache@v4
+        with:
+          path: ~/blender
+          key: blender-${{ env.BLENDER_VERSION }}-linux-x64
+      - name: Download Blender
+        if: steps.cache-blender.outputs.cache-hit != 'true'
+        run: |
+          name="blender-${BLENDER_VERSION}-linux-x64"
+          curl -fsSL -o "/tmp/$name.tar.xz" \
+            "https://download.blender.org/release/Blender${BLENDER_SERIES}/$name.tar.xz"
+          echo "${BLENDER_SHA256}  /tmp/$name.tar.xz" | sha256sum -c -
+          mkdir -p ~/blender
+          tar -xJf "/tmp/$name.tar.xz" -C ~/blender
+      - name: Install Blender outside the home directory
+        # Eval runs make the home directory unreadable to shell commands, so Blender lives in /opt and is linked
+        # onto PATH as `blender` for both arms.
+        run: |
+          sudo cp -R "$HOME/blender/blender-${BLENDER_VERSION}-linux-x64" /opt/blender
+          sudo ln -sf /opt/blender/blender /usr/local/bin/blender
+      - name: Install Claude Code and sandbox dependencies
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Add an ANTHROPIC_API_KEY repository secret to run the evals."
+            exit 1
+          fi
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap socat libxi6 libxxf86vm1 libxfixes3 libxrender1 libxkbcommon0 libsm6 \
+            libice6 libgl1 libegl1 libgl1-mesa-dri
+          # Ubuntu 24.04 blocks the user namespaces bubblewrap needs unless bwrap has an AppArmor profile.
+          if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" = "1" ]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' '' \
+              'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '  include if exists <local/bwrap>' '}' \
+              | sudo tee /etc/apparmor.d/bwrap > /dev/null
+            sudo systemctl reload apparmor
+          fi
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Copy the plugin outside the home directory
+        # Eval runs make the home directory unreadable to shell commands, and the checkout sits under /home/runner.
+        # The skill's scripts live inside the plugin, so run from a copy they can read.
+        run: cp -R "$GITHUB_WORKSPACE" /tmp/video-to-blender
+      - name: Run the eval suite
+        working-directory: /tmp/video-to-blender
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CASE: ${{ inputs.case }}
+          RUNS: ${{ inputs.runs }}
+          MODEL: ${{ inputs.model }}
+          JUDGE_MODEL: ${{ inputs.judge_model }}
+          THRESHOLD: ${{ inputs.threshold }}
+          MAX_COST_USD: ${{ inputs.max_cost_usd }}
+        run: |
+          claude --version
+          blender --version
+          args=(--trust-plugin --no-publish --runs "$RUNS" --model "$MODEL" --judge-model "$JUDGE_MODEL"
+                --threshold "$THRESHOLD" --max-cost-usd "$MAX_COST_USD" --output-dir "$GITHUB_WORKSPACE/eval-results")
+          if [ -n "$CASE" ]; then args+=(--case "$CASE"); fi
+          claude plugin eval . "${args[@]}" --allow-tools Write Edit Bash
+      - name: Summarize
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          path = Path("eval-results/aggregate-result.json")
+          if not path.exists():
+              print("No aggregate-result.json was written; see the run log.")
+              raise SystemExit
+          res = json.loads(path.read_text())
+          num = lambda v, sign="": "—" if v is None else f"{v:{sign}.2f}"
+          print("| case | with plugin | Δ vs without |\n|---|---|---|")
+          for case in res.get("cases", []):
+              agg = case.get("aggregates", {})
+              print(f"| {case.get('name')} | {num(agg.get('score'))} | {num(agg.get('delta'), '+')} |")
+          agg = res.get("aggregates", {})
+          line = (f"\nOverall {num(agg.get('overallScore'))}, mean Δ {num(agg.get('meanDelta'), '+')}, "
+                  f"{agg.get('casesPassed')}/{agg.get('casesTotal')} cases passed, ~${num(res.get('costUsd'))}")
+          if res.get("partial"):
+              line += f" (partial: {res.get('partialReason')})"
+          print(line)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results
+          path: eval-results/
+          if-no-files-found: warn

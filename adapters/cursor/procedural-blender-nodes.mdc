@@ -1,0 +1,22 @@
+---
+description: Blender bpy scripts that build or edit node trees (Geometry Nodes, Shader Nodes, compositor), procedural generators, Blender 5.x ports
+globs: **/*.py
+alwaysApply: false
+---
+
+Copy this file into your project's `.cursor/rules/`. It applies to Python files that use `bpy` to build node systems;
+ignore it for other Python. Install the skill too (Cursor reads `~/.cursor/skills`, `~/.claude/skills` and
+`.agents/skills`), so the rule can point at it.
+
+- Use the `procedural-blender-nodes` skill: route the subject with `references/subject-routing.md`, find groups with
+  `scripts/nodes_tools.py search`, build every group with nodekit's `Graph`, and instance `NK` library groups
+  instead of rewriting them.
+- Every group and input has a description; inputs have ranges and subtypes and sit in panels (a Primary panel first);
+  each block is in a labelled frame.
+- Animated groups take a `Time` input in seconds; only the top-level modifier group reads Scene Time.
+- Per-piece variation reaches materials as `nk_color` (FLOAT_COLOR) and `nk_rand` (FLOAT 0..1) attributes.
+- Shared groups are built once (`@nodegroup` or `nodekit.graph.once`); rebuilding one unlinks its users.
+- Blender 5.2: never `mod["Socket_N"]`; use `nodekit.inspect.set_modifier_inputs(mod, {"Name": value})`. Modes on
+  Transform, Resample and Set Curve Normal are input sockets.
+- Run Blender as `blender -b --factory-startup --python build.py`, then `scripts/validate.py` on the saved .blend;
+  zero node warnings, zero lint.

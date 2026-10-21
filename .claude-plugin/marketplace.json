@@ -1,14 +1,23 @@
 {
-  "name": "blender-node-skills",
-  "description": "Procedural Blender node skills for coding agents",
-  "owner": { "name": "gokayfem", "url": "https://github.com/gokayfem" },
+  "name": "video-to-blender",
+  "description": "Turn videos, images or ideas into procedural Blender node systems with coding agents",
+  "owner": {
+    "name": "gokayfem",
+    "url": "https://github.com/gokayfem"
+  },
   "plugins": [
     {
-      "name": "blender-node-skills",
+      "name": "video-to-blender",
       "source": "./",
-      "description": "Procedural Blender Geometry/Shader/compositor node systems built from Python, with a tested node-group library",
+      "description": "Editable Geometry/Shader/compositor node systems built from Python, from a reference or from scratch, with a tested node-group library",
       "category": "development",
-      "tags": ["blender", "geometry-nodes", "shader-nodes", "procedural", "bpy"]
+      "tags": [
+        "blender",
+        "geometry-nodes",
+        "shader-nodes",
+        "procedural",
+        "bpy"
+      ]
     }
   ]
 }
