@@ -1,4 +1,5 @@
 out/
-reference/source/
+**/reference/source/
 __pycache__/
 *.blend1
+build/
