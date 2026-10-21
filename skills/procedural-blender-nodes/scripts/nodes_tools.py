@@ -158,7 +158,11 @@ def main():
     elif cmd == "check":
         cmd_check()
     elif cmd == "test":
-        sys.exit(run_blender(REPO / "tests" / "run_tests.py", *rest))
+        runner = REPO / "tests" / "run_tests.py"
+        if not runner.exists():
+            sys.exit("the property tests live in the repository (tests/), not in the installed skill: clone "
+                     "https://github.com/gokayfem/video-to-blender and run this from there")
+        sys.exit(run_blender(runner, *rest))
     elif cmd == "try":
         sys.exit(run_blender(SKILL / "scripts" / "try_group.py", *[r for r in rest if r != "--"]))
     else:
