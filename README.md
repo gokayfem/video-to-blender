@@ -1,16 +1,27 @@
 # Video to Blender
 
-A skill that teaches coding agents to build **procedural Blender node systems** from Python: Geometry Nodes
-generators, Shader Node materials, simulation zones and compositor looks. The result is a set of readable node
-groups an artist can open, understand and change, and that work on new input geometry. It works with Claude Code,
-Codex, Cursor, Copilot, Gemini and others.
+**Turn a reference video, image or idea into an editable procedural Blender node system.** A skill for coding
+agents (Claude Code, Codex, Cursor, Copilot, Gemini) that builds native Geometry Nodes, Shader Nodes and compositor
+graphs from Python, with a tested node-group library and validation tools.
 
-Give it a reference (an AI-generated video, a photo, a few views, or just a description), or nothing at all. It
-builds the effect as native, editable nodes, not a baked mesh or an image sequence. The skill pairs a workflow with
-**nodekit**, a Python graph builder and inspector, and a **tested node-group library**: 34 `NK` groups in 6 modules,
-each built, evaluated and numerically checked in Blender. Blender 5.2 or later is required.
+<p align="center"><img src="gallery/storybook/render.jpg" width="100%" alt="Storybook Street: a frame rendered from the node graphs"></p>
 
-GALLERY_PLACEHOLDER
+<p align="center"><img src="gallery/storybook/blender.jpg" width="100%" alt="The same scene inside Blender: viewport, shader nodes, geometry nodes and the modifier controls"></p>
+
+| The top-level graph: one modifier builds the whole street | One part opened: the houses, framed block by block |
+|---|---|
+| ![Storybook Street top-level graph](gallery/storybook/graph_Storybook_Street.jpg) | ![Houses graph](gallery/storybook/graph_SS_Facades.jpg) |
+
+**Storybook Street** ([`prompts/storybook-street/`](prompts/storybook-street/)) rebuilds a 20 s AI-generated village
+clip as one Geometry Nodes modifier on a path curve: the cobbled road, half-timbered houses, props, bunting moving
+in the wind, and a walker with planted feet. A camera follows the walker on any path. Every visible part is a node
+graph: geometry and motion in Geometry Nodes, materials in Shader Nodes, the sky in the world shader, haze and glow
+in the compositor. Python only builds those graphs and sets up the input curve, sun, camera rig and render
+settings. Draw a different curve and the same graph builds a different street.
+
+The skill pairs a workflow with **nodekit**, a Python graph builder and inspector, and a **tested node-group
+library**: 39 `NK` groups in 6 modules, each built, evaluated and numerically checked in Blender. Blender 5.2 or
+later is required.
 
 ## Why
 
@@ -105,33 +116,37 @@ What the commands do:
 
 | Module | Groups |
 |---|---|
-| `curve` | `NK Curve Frame` (s, d, h to a level frame on any curve), `NK Curve Bend` (bend curve-space geometry onto a path), `NK Curve Samples`, `NK Curve Parcels` (random widths that sum exactly, with fan data for bends), `NK Curve Ribbon` |
-| `shapes` | `NK Rounded Box`, `NK Chamfer Box` / `NK Chamfer Boxes` (chamfer size independent of scale), `NK Rod`, `NK Ring`, `NK Profile Revolve` (pots, barrels, vases), `NK Leaf`, `NK Blossom`, `NK Foliage Mound` |
+| `curve` | `NK Curve Frame` (s, d, h to a level frame on any curve), `NK Curve Bend` (bend curve-space geometry onto a path), `NK Curve Samples`, `NK Curve Parcels` (random widths that sum exactly, with fan data for bends), `NK Curve Ribbon`, `NK Catenary Point` (sagging ropes and cables) |
+| `shapes` | `NK Rounded Box`, `NK Chamfer Box` / `NK Chamfer Boxes` (chamfer size independent of scale), `NK Rod`, `NK Ring`, `NK Profile Revolve` (pots, barrels, vases), `NK Leaf`, `NK Blossom`, `NK Foliage Mound`, `NK Grass Tuft`, `NK Facade Frame` (one placement frame per wall face), `NK Store Local Coords` (per-piece texture space) |
 | `scatter` | `NK Scatter On Surface` (density, Poisson distance, slope/attribute masks, alignment), `NK Scatter Along Curve`, `NK Clumps` |
 | `motion` | `NK Damped Spring`, `NK Gait Step` (integrated phase, planted feet), `NK Wind Gust`, `NK Pendulum Sway`, `NK Time Remap` (loop, ping-pong, ease), `NK Flicker` |
-| `materials` | shader groups: `NK Attribute Tint`, `NK Stucco`, `NK Wood Grain`, `NK Stone`, `NK Felt`, `NK Terracotta`, `NK Stripes`, `NK Glow Glass`, plus `make_material()` |
+| `materials` | shader groups: `NK Attribute Tint`, `NK Stucco`, `NK Wood Grain`, `NK Stone`, `NK Felt`, `NK Terracotta`, `NK Stripes`, `NK Glow Glass`, `NK Ground`, `NK Root Tip Gradient`, plus `make_material()` |
 | `post` | compositor groups: `NK Haze Over Sky` (mist haze on premultiplied geometry over a sky gradient), `NK Soft Glow` |
 
 The full catalog with inputs and uses is
 [`references/library-index.md`](skills/procedural-blender-nodes/references/library-index.md).
 
-## Worked project: Storybook Street
+## Storybook Street in detail, and the templates
 
-![Reference (top) vs reconstruction (bottom)](prompts/storybook-street/docs/media/reference_vs_reconstruction.jpg)
+The top of this page is [`prompts/storybook-street/`](prompts/storybook-street/). It was measured against the
+reference over time (colour, luma percentiles, image motion) and validated by reopening the file; its README
+reports the results and the remaining differences. It has a Primary panel of eight macro controls, six presets,
+and the same graph on an S-bend, a hill and a spiral town:
 
-[`prompts/storybook-street/`](prompts/storybook-street/) rebuilds a 20 s AI-generated village clip as a
-curve-driven street generator. One modifier makes the cobbled road, half-timbered houses, props, bunting in the
-wind and a walking character with planted feet. A camera rig follows the walker on any path. It has a Primary
-panel of eight macro controls, six presets, and the same graph on an S-bend, a hill and a spiral town.
+| Reference (top) vs reconstruction (bottom) | Variations of one graph | The same graph on other curves |
+|---|---|---|
+| ![reference vs reconstruction](prompts/storybook-street/docs/media/reference_vs_reconstruction.jpg) | ![variations](prompts/storybook-street/docs/media/variations.jpg) | ![transfer](prompts/storybook-street/docs/media/transfer.jpg) |
 
-It was measured against the reference over time (colour, luma percentiles, image motion) and validated by
-reopening the file. Its README reports the results and the remaining differences honestly, and its
-[workflow](prompts/storybook-street/docs/WORKFLOW.md) became the reusable
-[reference-to-nodes prompt](prompts/reference-to-nodes-prompt.md).
+Its [workflow](prompts/storybook-street/docs/WORKFLOW.md) became the reusable
+[reference-to-nodes prompt](prompts/reference-to-nodes-prompt.md), for any reference: a video, images, or a
+written description.
 
-| Variations of one graph | The same graph on other curves |
-|---|---|
-| ![variations](prompts/storybook-street/docs/media/variations.jpg) | ![transfer](prompts/storybook-street/docs/media/transfer.jpg) |
+Smaller starting points, each built only from the library and run on more than one input, are in
+[`templates/`](skills/procedural-blender-nodes/templates/):
+
+| [![fence](gallery/thumb_curve_fence.jpg)](gallery/curve_fence.png) | [![bunting](gallery/thumb_wind_bunting.jpg)](gallery/wind_bunting.png) | [![scatter](gallery/thumb_surface_scatter.jpg)](gallery/surface_scatter.png) | [![house](gallery/thumb_parametric_house.jpg)](gallery/parametric_house.png) | [![growth](gallery/thumb_growth_sim.jpg)](gallery/growth_sim.png) |
+|---|---|---|---|---|
+| Fence along any curve | Bunting in the wind | Scatter by slope and height | House from a few controls | Growth over any mesh (simulation zone) |
 
 ## Verification
 
@@ -139,7 +154,7 @@ reopening the file. Its README reports the results and the remaining differences
 |---|---|---|
 | Static rules | `nodes_tools.py check` | every library group is registered with a summary and uses, has an `NK` name, and follows module order; the index is current |
 | Build + lint + evaluate | `nodes_tools.py check` (in Blender) | every group builds, every group and input has a description, no dangling nodes or invalid links, zero node warnings on test inputs |
-| Property tests | `nodes_tools.py test` (`tests/test_*.py`) | TESTS_PLACEHOLDER |
+| Property tests | `nodes_tools.py test` (`tests/test_*.py`) | 59 numeric tests: curve frames orthonormal on hills, bends preserving centreline length, parcel widths summing to the curve length, sample counts on open and closed curves, scatter density and spacing, warning-free empty scatters, spring gain and phase against the formula, zero foot slide, bounded wind, exact loops, material renders, premultiplied haze, and a simulation front that is monotonic and frame-rate independent |
 | Templates | `tests/build_gallery.py` | every template builds, reopens with zero warnings and lint, and renders its gallery image |
 | Skill effect | `evals/` (`claude plugin eval`, paid, manual) | output-rule adherence with the skill vs without it on 6 Blender tasks, and no false triggers on 3 near-miss tasks; see [evals/README.md](evals/README.md) |
 
