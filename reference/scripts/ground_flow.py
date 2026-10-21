@@ -46,7 +46,20 @@ for i, g in frames(gray=True):
                     q = b[y + dy0:y + dy0 + PH, xx:xx + PW]
                     s = np.mean((q - p) ** 2)
                     if s < best[0]: best = (s, dx, dy0)
-            recs.append((f0, x + PW / 2, y + PH / 2, best[1], best[2], best[0] / (p.var() + 1)))
+            s0, bdx, bdy = best
+            def ssd(ddx, ddy):
+                xx, yy = x + ddx, y + ddy
+                if xx < 0 or xx + PW > 1280 or yy < 0 or yy + PH > 704: return None
+                return np.mean((b[yy:yy + PH, xx:xx + PW] - p) ** 2)
+            sub = []
+            for (ax, ay) in ((1, 0), (0, 1)):
+                sm, sp = ssd(bdx - ax, bdy - ay), ssd(bdx + ax, bdy + ay)
+                off = 0.0
+                if sm is not None and sp is not None:
+                    den = sm - 2 * s0 + sp
+                    if den > 1e-6: off = float(np.clip(0.5 * (sm - sp) / den, -0.5, 0.5))
+                sub.append(off)
+            recs.append((f0, x + PW / 2, y + PH / 2, bdx + sub[0], bdy + sub[1], s0 / (p.var() + 1)))
 R = np.array(recs)
 np.savetxt(os.path.join(OUT, "ground_flow.csv"), R, delimiter=",", fmt="%.3f", header="frame,x,y,dx,dy,score")
 print(len(R))

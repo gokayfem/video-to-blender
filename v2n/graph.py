@@ -44,6 +44,27 @@ def find_socket(sockets, key):
     return hits[int(k) if k else 0]
 
 
+_ONCE = {}
+
+
+def once(build):
+    """Decorator for builders of SHARED groups (used by several modules). Rebuilding a group clears its
+    interface, which silently unlinks every group node already using it, so a shared group is built once per
+    Blender session and the same tree is returned afterwards."""
+    def wrapper(*a, **k):
+        tree = _ONCE.get(build)
+        if tree is not None:
+            try:
+                tree.name                      # still alive (not freed by a factory reset)
+                return tree
+            except ReferenceError:
+                pass
+        tree = _ONCE[build] = build(*a, **k)
+        return tree
+    wrapper.__doc__, wrapper.__name__ = build.__doc__, build.__name__
+    return wrapper
+
+
 class Node:
     """Thin wrapper: ``n["Out"]`` is an output socket, ``n.i("In")`` an input socket."""
 

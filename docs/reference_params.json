@@ -1,0 +1,97 @@
+{
+  "_meta": {
+    "source": "reference/source/village_source.mp4 (20.04 s, 481 frames, 24 fps, 1280x704, AI-generated)",
+    "units": "H = walker height (hood top to boot sole). Street space (s, d, h); +d = LEFT of travel (AGENTS.md).",
+    "confidence_scale": "high = measured directly, f-independent, stable over the clip; medium = measured but noisy or depends on one assumption; low = estimate/visual or depends on the focal length guess",
+    "along_street_note": "All along-street lengths (house widths, spacings, block lengths) are quoted at walk speed 0.9 H/s, which follows from f = 700 px. They scale together: multiply by (chosen speed / 0.9) to stay consistent with the clip's timing.",
+    "scripts": "reference/scripts/*.py, run with /Applications/Blender.app/Contents/Resources/5.2/python/bin/python3.13"
+  },
+  "camera": {
+    "horizon_row": {"value": 355, "unit": "px from top (frame 704 tall)", "how": "ground-flow fit dy = k*(y - y_h)^2 over 49k patches (ground_flow.py, fit_flow.py); 349-360 across 5 s windows", "confidence": "high"},
+    "height": {"value": 0.895, "unit": "H", "how": "(y_feet - y_h)/(y_feet - y_hood_top) with feet 663, hood top 318 (walker_track.py)", "confidence": "high"},
+    "pitch": {"value": 0.0, "unit": "deg", "how": "horizon 355 vs image centre 352 (<0.3 deg); building verticals vertical", "confidence": "high"},
+    "roll": {"value": 0.0, "unit": "deg", "how": "verticals vertical, curb lines symmetric", "confidence": "high"},
+    "focal_px": {"value": 700, "range": [600, 850], "unit": "px (frame height 704)", "how": "shape priors: pot-rim ellipse (~720), door/window aspect in the unrolled facades, old breakdown 680-700; barrel tops too noisy. Not determinable from motion (V/f only).", "confidence": "low"},
+    "vertical_fov": {"value": 53, "range": [45, 60], "unit": "deg", "how": "2*atan(352/f)", "confidence": "low"},
+    "v_over_f": {"value": 0.00129, "unit": "1/s (walk speed in H/s divided by f in px)", "how": "ground flow: V/(f*hc) = 1.44e-3 /s, constant over the clip (+/-1%)", "confidence": "high"},
+    "distance_to_walker": {"value": 2.0, "range": [1.75, 2.45], "unit": "H (camera to walker feet, along travel)", "how": "f*hc/(y_feet - y_h) = 2.9e-3*f", "confidence": "low"},
+    "lateral_offset_from_carriageway_centre": {"value": -0.15, "unit": "H (+ = left)", "how": "cross_section.py: carriageway edges at -1.31/+1.00 relative to the focus of expansion; camera path 0.15 H right of centre", "confidence": "medium"},
+    "travel_direction_column": {"value": 620, "unit": "px", "how": "focus of expansion from ground flow, 2 s windows 558-657", "confidence": "medium"},
+    "shake": {"value": 0.0, "unit": "px", "how": "far-street patches move <0.6 px rms at gait frequencies (camera_shake.py): smooth dolly, no bob", "confidence": "high"},
+    "slow_yaw_drift": {"value": [-56, 25], "unit": "px horizontal over the clip (~ -4.6..+2 deg)", "how": "integrated far-patch shift; the street winds gently", "confidence": "medium"}
+  },
+  "walker": {
+    "speed": {"value": 0.9, "range": [0.77, 1.1], "unit": "H/s", "how": "V = 1.29e-3 * f with f = 700 px", "confidence": "low (exact relative to f)"},
+    "step_frequency": {"value": 2.76, "unit": "steps/s", "how": "ACF of hood-top bob: 8.70 frames/step (walker_acf.py)", "confidence": "high"},
+    "gait_cycle": {"value": 0.725, "unit": "s", "how": "ACF of left-right boot difference and hood x: 17.4 frames", "confidence": "high"},
+    "step_length": {"value": 0.33, "unit": "H", "how": "speed / step frequency", "confidence": "low"},
+    "bob_amplitude": {"value": 0.024, "unit": "H (half peak-to-peak)", "how": "hood top y, +/-8 px at 344 px/H, at step frequency; camera does not bob", "confidence": "high"},
+    "sway_amplitude": {"value": 0.026, "unit": "H", "how": "hood centre x +/-9 px at gait-cycle frequency", "confidence": "medium"},
+    "lateral_wander": {"value": 0.05, "unit": "H", "how": "slow drift of hood centre, 648-682 px", "confidence": "medium"},
+    "offset_from_camera_path": {"value": -0.14, "unit": "H (+ = left)", "how": "hood centre x 667 vs travel column 620 at feet row", "confidence": "medium"},
+    "flap_span": {"value": 0.87, "unit": "H tip to tip", "how": "widest teal row, 300 px (walker_track.py)", "confidence": "high"},
+    "flap_tip_height": {"value": 0.40, "unit": "H above ground", "how": "flap tips 0.60 H below hood top (flap_track.py)", "confidence": "high"},
+    "flap_tip_motion": {"value": 0.02, "unit": "H (about +/-2.5 deg)", "how": "tip y/x residuals; weak periodicity, slightly lagging the bob by ~3 frames, anti-phase", "confidence": "medium"},
+    "colors_srgb": {"value": {"hood_flaps": "#366470 (lit #4A7785, shade #294E56)", "scarf": "#963B26", "boots": "#A3662E (highlight #C88A45)", "mitts_satchel": "#65311E", "legs": "#263B36", "tunic": "#B38464 shade, cream in light"}, "unit": "sRGB as rendered", "how": "class masks over 21 frames (walker_colors.py)", "confidence": "medium"}
+  },
+  "road": {
+    "carriageway_width": {"value": 2.3, "unit": "H", "how": "grass-mask edges on rows 560-680, every 4th frame (cross_section.py); identical on all rows", "confidence": "high"},
+    "inner_grass_strip_width": {"value": 0.32, "unit": "H", "how": "same", "confidence": "high"},
+    "curb_inner_face_offset": {"value": 1.47, "unit": "|d| H from carriageway centre", "how": "same", "confidence": "high"},
+    "curb_top_width": {"value": 0.25, "unit": "H", "how": "grey band 1.41-1.64 raw; raised so slightly overestimated", "confidence": "medium"},
+    "curb_height": {"value": 0.07, "range": [0.05, 0.1], "unit": "H", "how": "visible face height hc*dy/(y - y_h) at row 640", "confidence": "medium"},
+    "curb_block_length": {"value": 0.8, "range": [0.6, 0.95], "unit": "H", "how": "joint spacing in unrolled strips", "confidence": "low"},
+    "sidewalk_width": {"value": [0.35, 0.7], "unit": "H (right, left)", "how": "cobbles beyond the curb to the verge grass", "confidence": "medium"},
+    "verge_width": {"value": [0.2, 0.6], "unit": "H", "how": "grass between sidewalk and wall, varies per house", "confidence": "low"},
+    "facade_offset": {"value": 2.55, "range": [2.4, 2.65], "unit": "|d| H from carriageway centre", "how": "wall-base rows in t07/t10 converted with the ground model", "confidence": "medium"},
+    "cobble_size": {"value": {"across": 0.3, "along": 0.25}, "unit": "H", "how": "near cobbles 90-110 px wide x 30-35 px tall at v=285 (across f-independent, along at f=700)", "confidence": "medium/low"},
+    "cobble_gap": {"value": 0.2, "unit": "fraction of cobble size", "how": "visual", "confidence": "low"},
+    "colors_srgb": {"value": {"cobbles_mixed": "#846F63", "cobbles_sunlit": "#D7AA7E", "cobbles_shade": "#71635B", "gaps": "#524334", "curb": "#6D6762 (shade) .. #8A8580", "grass": "#58553B (p90 #786E5F)"}, "unit": "sRGB", "how": "palette.py / two_tone.py boxes", "confidence": "medium"}
+  },
+  "facades": {
+    "house_width": {"value": 3.2, "range": [1.9, 5.2], "unit": "H along s", "how": "house boundaries in unrolled strips: left 3.7, 4.1, 5.2, 3.7; right ~7 frontages in 18 H (mean 2.6)", "confidence": "medium (scale low: f)"},
+    "houses_per_clip": {"value": 11.5, "unit": "frontages passing in 20 s (both sides)", "how": "slit strips", "confidence": "medium"},
+    "storeys": {"value": 3, "range": [2, 4], "unit": "count (ground + upper)", "how": "visual", "confidence": "medium"},
+    "ground_floor_height": {"value": 1.85, "range": [1.7, 2.0], "unit": "H", "how": "floor beam height in unrolled strips (vertical scale u/|d|, f-independent)", "confidence": "medium"},
+    "upper_floor_height": {"value": 1.5, "range": [1.4, 1.6], "unit": "H", "how": "same", "confidence": "low"},
+    "jetty_overhang": {"value": 0.3, "range": [0.2, 0.4], "unit": "H per floor", "how": "visual from near facades", "confidence": "low"},
+    "window_glass": {"value": {"w": 0.55, "h": 0.75}, "unit": "H", "how": "unrolled strip x183", "confidence": "medium"},
+    "shutter_width": {"value": 0.35, "unit": "H each, pair per window", "how": "same", "confidence": "medium"},
+    "door": {"value": {"w": 0.75, "h": 1.45}, "unit": "H", "how": "unrolled strips x183, x1057", "confidence": "medium"},
+    "roof_pitch": {"value": 55, "range": [50, 60], "unit": "deg", "how": "far gable/slate roof edges", "confidence": "low"},
+    "colors_srgb": {"value": {"plaster_cream_sunlit": "#CC935B (p90 #E4B376)", "plaster_ochre_shade": "#B9703F", "plaster_yellow": "#A76C3D", "plaster_orange_shade": "#834C31", "plaster_sage_shade": "#72705E", "wall_shaded_right": "#654029..#B07D53", "timber": "#574235 .. #825440", "shutter_lit": "#A89B7A (reads green-grey in context)", "door_green": "#463F30", "roof_slate": "#697C90"}, "unit": "sRGB as rendered", "how": "palette.py", "confidence": "medium"}
+  },
+  "props": {
+    "per_18H_left": {"value": {"window_boxes_ground": 4, "pots": 5, "barrels": 1, "awnings": 2, "hanging_signs": 0.5, "wall_lanterns": 1, "ivy_patches": 2.5, "ladders": 0, "doors": 3}, "unit": "count per 18 H of street", "how": "slit strips x183/x328", "confidence": "medium"},
+    "per_18H_right": {"value": {"window_boxes_ground": 6, "pots": 8, "barrels": 6, "awnings": 1, "hanging_signs": 2, "wall_lanterns": 2, "ivy_patches": 1.5, "ladders": 2, "doors": 5}, "unit": "count per 18 H of street", "how": "slit strips x912/x1057", "confidence": "medium"},
+    "barrel": {"value": {"height": 0.55, "diameter": 0.6}, "unit": "H", "how": "t00 barrel: 142 px tall, 164 px wide at v=228 (f-independent)", "confidence": "medium"},
+    "pot_height": {"value": [0.17, 0.45], "unit": "H", "how": "t07/t10 pots", "confidence": "medium"},
+    "wall_lantern_size": {"value": 0.28, "unit": "H", "how": "t03 left lantern, 60 px at |d| 2.6", "confidence": "low"},
+    "awning_colors": {"value": {"green_white": ["#A59186..#B0A99E stripe", "#D8CDBE cream"], "peach_white": ["#AC6B3E stripe", "#C19D8E light"]}, "unit": "sRGB", "how": "two_tone.py", "confidence": "medium"},
+    "flower_colors": {"value": {"red": "#823729 (p90 #AE473D)", "box": "#663C23", "pot": "#592814 shade"}, "unit": "sRGB", "how": "palette.py", "confidence": "medium"}
+  },
+  "bunting": {
+    "string_spacing": {"value": 2.6, "range": [1.5, 4.5], "unit": "H along s", "how": "7 strings leave the top of frame at t = 2.0, 5.1, 7.7, 12.7, 14.4, 16.2, 18.8 s (string_tracks.py)", "confidence": "medium (scale low: f)"},
+    "string_height_centre": {"value": 3.05, "range": [2.86, 3.27], "unit": "H", "how": "1/(y_h - y) linear in t fit for each string at column 640 (f-independent)", "confidence": "high"},
+    "string_height_ends": {"value": 3.7, "range": [3.3, 3.9], "unit": "H", "how": "same fit at column 780 (noisy)", "confidence": "low"},
+    "flag_size": {"value": {"w": 0.3, "drop": 0.32}, "unit": "H", "how": "40x42 px flags on a string at h-hc = 2.37, w=310 px (size = px*(h-hc)/w)", "confidence": "medium"},
+    "flag_pitch": {"value": 0.55, "unit": "H centre to centre", "how": "same string", "confidence": "low"},
+    "flag_colors": {"value": ["#AE6F66 salmon", "#9BA399 sage", "#ACAC9C cream-khaki", "#C1A087 peach"], "unit": "sRGB (backlit)", "how": "7x7 medians", "confidence": "medium"},
+    "lantern_size": {"value": {"w": 0.34, "h": 0.37}, "unit": "H", "how": "blob bbox * d/u (lantern_sway.py), 3 lanterns 0.32-0.40", "confidence": "medium"},
+    "lantern_height": {"value": 2.7, "range": [2.56, 2.97], "unit": "H (centre)", "how": "static-point trajectory fit, 5 lanterns", "confidence": "medium"},
+    "lantern_offsets": {"value": [1.2, 1.4, 1.56, 1.91, 2.58], "unit": "|d| H", "how": "same", "confidence": "medium"},
+    "lantern_sway": {"value": 0.01, "unit": "H", "how": "residuals after the static fit are 1-3 px and common to all lanterns (camera yaw/pitch), i.e. no visible sway", "confidence": "medium"},
+    "lantern_glow": {"value": "#E4BB86", "unit": "sRGB", "how": "palette.py", "confidence": "medium"}
+  },
+  "light": {
+    "sun_direction": {"value": "ahead-right of travel, low (~25-35 deg elevation)", "unit": "street terms", "how": "left facades lit, right in shade, shadows on the left wall fall toward the camera, bright far street", "confidence": "medium"},
+    "sky_top": {"value": "#9EC6D5", "unit": "sRGB", "confidence": "high"},
+    "sky_low_haze": {"value": "#E0CFC1", "unit": "sRGB", "how": "far street glow at the vanishing point", "confidence": "medium"},
+    "sun_to_shade_ratio": {"value": 2.3, "unit": "luma ratio on cobbles", "how": "#D7AA7E vs #71635B", "confidence": "medium"},
+    "grade": {"value": {"luma_p1": 28, "luma_p50": 93, "luma_p99": 210, "black_point": "#241508", "white_point": "#EED9D9", "mean_saturation": 0.40, "mean_R_minus_B": 39}, "unit": "0-255 sRGB", "how": "grade_stats.py over 21 frames", "confidence": "high"}
+  },
+  "clip": {
+    "loop_period_frames": {"value": 479, "unit": "frames", "how": "mean abs diff frame0 vs frame479 = 5.5 (neighbours ~9); the last ~0.3 s morphs back to frame 0", "confidence": "high"},
+    "street_length_per_loop": {"value": 18.0, "unit": "H", "how": "0.9 H/s * 19.96 s", "confidence": "low (f)"}
+  }
+}

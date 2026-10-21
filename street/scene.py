@@ -25,8 +25,9 @@ def path_curve(kind="reference", name="Street Path", sc=None):
         "straight": [(0, -10, 0), (0, 50, 0)],
         "s_bend": [(0, -10, 0), (6, 8, 0), (-6, 26, 0), (4, 44, 0), (0, 60, 0)],
         "hill": [(0, -10, 0), (0, 10, 1.5), (2, 30, 4.0), (-1, 50, 4.5)],
-        "spiral": [(12 * math.cos(a) * (1 - a / 30), 12 * math.sin(a) * (1 - a / 30), 0)
-                   for a in [i * 0.35 for i in range(28)]],
+        # inward spiral with ~15 H between turns so two rows of houses fit back to back
+        "spiral": [((40 - 15 * a / (2 * math.pi)) * math.cos(a), (40 - 15 * a / (2 * math.pi)) * math.sin(a), 0)
+                   for a in [i * 0.3 for i in range(38)]],
     }[kind]
     cu = bpy.data.curves.new(name, "CURVE")
     cu.dimensions = "3D"
@@ -51,12 +52,21 @@ def holder(name, curve_obj, group, sc=None):
     return ob, mod
 
 
-def light_world(sun_elev=42.0, sun_azim=-35.0, strength=4.0, sc=None):
+def srgb(hexstr):
+    h = hexstr.lstrip("#")
+    c = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    return tuple(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c)
+
+
+def light_world(sun_elev=30.0, sun_azim=145.0, strength=4.0, sun_color="#FFE2BC", sky_top="#9EC6D5",
+                sky_horizon="#E0CFC1", sky_strength=1.0, haze=0.0, haze_color="#E0CFC1", sc=None):
+    """Sun + gradient sky (+ optional uniform haze volume). sun_azim rotates the sun about Z: 180 = light
+    travelling straight back toward a camera looking down +Y, 145 = from ahead and to the right."""
     sc = sc or bpy.context.scene
     sun = bpy.data.lights.new("Sun", "SUN")
     sun.energy = strength
     sun.angle = math.radians(2.0)
-    sun.color = (1.0, 0.86, 0.68)
+    sun.color = srgb(sun_color)
     ob = bpy.data.objects.new("Sun", sun)
     ob.rotation_euler = (math.radians(90 - sun_elev), 0, math.radians(sun_azim))
     sc.collection.objects.link(ob)
@@ -73,10 +83,15 @@ def light_world(sun_elev=42.0, sun_azim=-35.0, strength=4.0, sc=None):
     nt.links.new(sep.outputs["Z"], mr.inputs["Value"])
     nt.links.new(mr.outputs[0], ramp.inputs[0])
     ramp.color_ramp.elements[0].position = 0.0
-    ramp.color_ramp.elements[0].color = (0.62, 0.72, 0.74, 1)      # horizon haze
-    ramp.color_ramp.elements[1].color = (0.30, 0.55, 0.68, 1)      # sky top
+    ramp.color_ramp.elements[0].color = (*srgb(sky_horizon), 1)
+    ramp.color_ramp.elements[1].color = (*srgb(sky_top), 1)
     nt.links.new(ramp.outputs[0], bg.inputs["Color"])
-    bg.inputs["Strength"].default_value = 1.0
+    bg.inputs["Strength"].default_value = sky_strength
+    if haze > 0:
+        vol = nt.nodes.new("ShaderNodeVolumeScatter")
+        vol.inputs["Color"].default_value = (*srgb(haze_color), 1)
+        vol.inputs["Density"].default_value = haze
+        nt.links.new(vol.outputs[0], nt.nodes["World Output"].inputs["Volume"])
     sc.world = w
     return ob
 

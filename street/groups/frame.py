@@ -4,11 +4,12 @@ A street-space point is (s, d, h): arc length along the path curve, lateral offs
 above the curve. The group returns world position and a rotation whose +X runs along the street, +Y points left
 and +Z is up, so anything modelled in street space can be instanced with that rotation and follows any curve.
 """
-from v2n.graph import Graph
+from v2n.graph import Graph, once
 
 NAME = "SS Street Point"
 
 
+@once
 def build():
     g = Graph(NAME, description="Street-space (s, d, h) to world position and orientation on the path curve. "
                                 "s = arc length, d = lateral offset (+left), h = height above the curve")

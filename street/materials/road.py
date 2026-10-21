@@ -62,9 +62,9 @@ class _M:
     def mixc(self, fac, a, b, blend="MIX"):
         n = self.n("ShaderNodeMix", props={"data_type": "RGBA", "blend_type": blend, "clamp_factor": True})
         self.set(n.inputs["Factor"], fac)
-        self.set(n.inputs["A_Color"], a)
-        self.set(n.inputs["B_Color"], b)
-        return n.outputs["Result_Color"]
+        self.set(next(x for x in n.inputs if x.identifier == "A_Color"), a)
+        self.set(next(x for x in n.inputs if x.identifier == "B_Color"), b)
+        return next(x for x in n.outputs if x.identifier == "Result_Color")
 
     def bsdf(self, color, rough=0.8, normal=None, spec=0.3):
         b = self.n("ShaderNodeBsdfPrincipled", **{"Base Color": color, "Roughness": rough})
@@ -121,12 +121,12 @@ def turf():
     m = _M("SS Verge Turf")
     tint = m.attr("ss_color").outputs["Color"]
     patches = m.noise(3.5, 3.0, 0.6)
-    bare = m.mapr(patches.outputs["Fac"], 0.5, 0.65, 0.0, 1.0)
-    earth = (0.16, 0.11, 0.06)
+    bare = m.mapr(patches.outputs["Fac"], 0.58, 0.72, 0.0, 0.8)
+    earth = (0.12, 0.085, 0.05)
     col = m.mixc(bare.outputs[0], tint, earth)
-    fine = m.mapr(m.noise(30.0).outputs["Fac"], 0.3, 0.7, 0.75, 1.15)
+    fine = m.mapr(m.noise(30.0).outputs["Fac"], 0.3, 0.7, 0.8, 1.15)
     col = m.mixc(1.0, col, fine.outputs[0], blend="MULTIPLY")
-    return m.bsdf(col, 0.95, m.bump(m.noise(50.0).outputs["Fac"], 0.4))
+    return m.bsdf(col, 0.95, m.bump(m.noise(50.0).outputs["Fac"], 0.15))
 
 
 def grass():
@@ -134,7 +134,7 @@ def grass():
     m = _M("SS Verge Grass")
     tint = m.attr("ss_color").outputs["Color"]
     tip = m.attr("ss_tip").outputs["Fac"]
-    shade = m.mapr(tip, 0.0, 1.0, 0.45, 1.15)
+    shade = m.mapr(tip, 0.0, 1.0, 0.6, 1.2)
     col = m.mixc(1.0, tint, shade.outputs[0], blend="MULTIPLY")
     b = m.bsdf(col, 0.7, spec=0.4)
     for n in m.nt.nodes:

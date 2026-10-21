@@ -34,9 +34,9 @@ SCENES = {
     "Transfer Spiral": dict(path="spiral", cam="top"),
 }
 CAM = json.loads((ROOT / "street" / "camera.json").read_text()) if (ROOT / "street" / "camera.json").exists() else {
-    "follow": {"lens": 20.0, "back": 3.6, "height": 1.45, "ahead": 6.0, "target_h": 1.05},
+    "follow": {"lens": 20.0, "back": 2.0, "side": -0.15, "height": 0.895, "ahead": 8.0, "target_h": 0.895},
     "high": {"lens": 24.0, "back": 9.0, "height": 6.0, "ahead": 6.0, "target_h": 0.5},
-    "top": {"lens": 30.0, "back": 0.0, "height": 70.0, "ahead": 0.0, "target_h": 0.0, "static": [0, 0]},
+    "top": {"lens": 30.0, "back": 0.0, "height": 150.0, "ahead": 0.0, "target_h": 0.0, "static": [0, 0]},
 }
 
 
@@ -78,8 +78,8 @@ def camera_rig(sc, curve, street, mod, kind):
         c.target, c.use_fixed_location, c.use_curve_follow = curve, True, True
         c.forward_axis, c.up_axis = "FORWARD_Y", "UP_Z"
         cam.parent = target.parent = rig
-        cam.location = (0, -spec["back"], spec["height"])
-        target.location = (0, spec["ahead"], spec["target_h"])
+        cam.location = (-spec.get("side", 0.0), -spec["back"], spec["height"])
+        target.location = (-spec.get("side", 0.0), spec["ahead"], spec["target_h"])
         # driver: offset_factor = s_walker(t) / L, t = scene seconds * Time Scale + Time Offset
         ids = inspect.modifier_inputs(mod)
         fc = c.driver_add("offset_factor")

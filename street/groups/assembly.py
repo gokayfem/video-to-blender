@@ -20,9 +20,9 @@ PARTS = [
 ]
 SHARED = ["Street Width", "Curb Width", "Curb Height", "Verge Width"]
 SHARED_SPEC = {
-    "Street Width": (4.0, 1.0, 20.0, "Curb-to-curb width of the cobbled road"),
-    "Curb Width": (0.2, 0.0, 1.0, "Width of the curb stones"),
-    "Curb Height": (0.12, 0.0, 0.5, "Height of the curb above the road"),
+    "Street Width": (3.0, 1.0, 20.0, "Curb-to-curb width of the cobbled road"),
+    "Curb Width": (0.25, 0.0, 1.0, "Width of the curb stones"),
+    "Curb Height": (0.07, 0.0, 0.5, "Height of the curb above the road"),
     "Verge Width": (0.8, 0.0, 4.0, "Paved strip and grass between the curb and the house fronts"),
 }
 _TYPE_BY_SOCKET = {v: k for k, v in SOCKET_TYPES.items()}
