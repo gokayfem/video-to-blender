@@ -27,6 +27,27 @@ SHARED_SPEC = {
 }
 _TYPE_BY_SOCKET = {v: k for k, v in SOCKET_TYPES.items()}
 
+# The Primary panel: a few broad controls that each drive several detailed ones (which stay available, and
+# are combined with these: detailed value (op) primary value).
+PRIMARY = [
+    # name, type, default, min, max, description, [(part, input, op)]
+    ("Extra Storeys", "INT", 0, -2, 4, "Taller or lower houses: added to Storeys Min and Max",
+     [("Houses", "Storeys Min", "ADD"), ("Houses", "Storeys Max", "ADD")]),
+    ("Timber Amount", "FLOAT", 1.0, 0.0, 1.7, "0 = plain plaster houses, 1 = the reference, more = busier framing",
+     [("Houses", "Timber Density", "MULTIPLY")]),
+    ("Prop Amount", "FLOAT", 1.0, 0.0, 2.0, "Scales every prop chance: window boxes, awnings, signs, lanterns, "
+     "pots, barrels, ivy", [("Props", n, "MULTIPLY") for n in (
+        "Window Box Chance", "Awning Chance", "Sign Chance", "Wall Lantern Chance", "Pot Chance",
+        "Barrel Chance", "Ivy Chance")]),
+    ("Flower Amount", "FLOAT", 1.0, 0.0, 3.0, "Blossoms in window boxes and flowers in the grass",
+     [("Props", "Box Flower Density", "MULTIPLY"), ("Road", "Flower Density", "MULTIPLY")]),
+    ("Festivity", "FLOAT", 1.0, 0.2, 3.0, "More bunting strings and paper lanterns (hide them with Show Bunting)",
+     [("Bunting", "String Spacing", "DIVIDE"), ("Bunting", "Paper Lantern Chance", "MULTIPLY")]),
+    ("Wind", "FLOAT", 1.0, 0.0, 8.0, "1 = the reference's light breeze; 4-6 = a windy day (bunting, signs)",
+     [("Bunting", "Wind Strength", "MULTIPLY"), ("Props", "Sign Swing", "MULTIPLY")]),
+]
+PRIMARY_DIRECT = {"Walk Speed"}          # detailed inputs shown in the Primary panel as they are
+
 
 def load_parts():
     built = []
@@ -55,13 +76,19 @@ def build():
                           "houses, props, bunting and a walker. Every part group can also be used on its own")
     g.input("Geometry", "GEOMETRY", desc="Ignored; the street is generated from Path", hide_value=True)
     path = g.input("Path", "OBJECT", desc="The curve the street follows. Draw any curve and pick it here",
-                   panel="Street")
+                   panel="Primary")
     seed = g.input("Seed", "INT", 0, desc="Changes every random choice: house widths, colours, props, stones",
-                   panel="Street")
+                   panel="Primary")
     shared = {"Seed": seed}
     for name in SHARED:
         dv, lo, hi, desc = SHARED_SPEC[name]
-        shared[name] = g.input(name, "FLOAT", dv, min=lo, max=hi, subtype="DISTANCE", desc=desc, panel="Street")
+        shared[name] = g.input(name, "FLOAT", dv, min=lo, max=hi, subtype="DISTANCE", desc=desc,
+                               panel="Primary" if name == "Street Width" else "Street")
+    macros, macro_targets = {}, {}
+    for name, stype, dv, lo, hi, desc, targets in PRIMARY:
+        macros[name] = g.input(name, stype, dv, min=lo, max=hi, desc=desc, panel="Primary")
+        for part, inp, op in targets:
+            macro_targets[(part, inp)] = (name, op)
     tscale = g.input("Time Scale", "FLOAT", 1.0, min=0.0, max=4.0, panel="Street",
                      desc="Speed of all animation (walk, wind); 0 freezes the street")
     toffset = g.input("Time Offset", "FLOAT", 0.0, subtype="TIME_ABSOLUTE", panel="Street",
@@ -75,7 +102,9 @@ def build():
         time = g.math("MULTIPLY_ADD", clock["Seconds"], tscale, toffset, label="Time")
 
     # Forward each part's own inputs to "<Part> > <Panel>" panels on the modifier
-    nodes, used = {}, {"Path", "Seed", "Time Scale", "Time Offset", *SHARED, *(f"Show {l}" for l, _ in parts)}
+    nodes = {}
+    used = {"Path", "Seed", "Time Scale", "Time Offset", *SHARED, *(f"Show {l}" for l, _ in parts),
+            *(p[0] for p in PRIMARY)}
     for label, ng in parts:
         with g.frame(f"{label}"):
             node = g.group(ng, label=label)
@@ -92,6 +121,8 @@ def build():
                 continue                                        # wired below (Anchors)
             else:
                 panel = f"{label} > {it.parent.name}" if it.parent and it.parent.name else label
+                if it.name in PRIMARY_DIRECT:
+                    panel = "Primary"
                 kw = {}
                 for k, attr in (("min", "min_value"), ("max", "max_value"), ("subtype", "subtype")):
                     if hasattr(it, attr):
@@ -107,6 +138,9 @@ def build():
                 name = it.name if it.name not in used else f"{label} {it.name}"
                 used.add(name)
                 src = g.input(name, stype, default, desc=it.description, panel=panel, **kw)
+                if (label, it.name) in macro_targets:
+                    mname, op = macro_targets[(label, it.name)]
+                    src = g.math(op, src, macros[mname], label=f"{it.name} {op.lower()} {mname}")
                 g.connect(src, sock)
 
     if "Houses" in nodes and "Props" in nodes:

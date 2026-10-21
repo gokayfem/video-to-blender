@@ -23,7 +23,7 @@ from street.groups import assembly
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 ap = argparse.ArgumentParser()
 ap.add_argument("--out", default=str(ROOT / "street" / "storybook_street.blend"))
-ap.add_argument("--preset", default="reference")
+ap.add_argument("--preset", default="1_reference")
 ap.add_argument("--scenes", default="Reference,Transfer S-Bend,Transfer Hill,Transfer Spiral")
 a = ap.parse_args(argv)
 

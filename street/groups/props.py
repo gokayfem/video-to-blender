@@ -602,7 +602,7 @@ def build():
                     desc="Share of window sills that get a flower box")
     wb_up = g.input("Upper Floor Share", "FLOAT", 0.5, min=0, max=1, subtype="FACTOR", panel="Window Boxes",
                     desc="Upper-floor sills get a box at Chance times this")
-    wb_fd = g.input("Flower Density", "FLOAT", 1.0, min=0, max=4, panel="Window Boxes",
+    wb_fd = g.input("Box Flower Density", "FLOAT", 1.0, min=0, max=4, panel="Window Boxes",
                     desc="How many blossoms per box (1 = like the reference)")
     wb_ca = g.input("Flower Red", "COLOR", (0.66, 0.02, 0.012, 1), panel="Window Boxes",
                     desc="Main geranium colour (about half the blossoms)")
@@ -631,10 +631,10 @@ def build():
                     desc="Share of round boards (the rest are bread boards)")
     sg_pc = g.input("Sign Paint", "COLOR", (0.21, 0.42, 0.37, 1), panel="Signs", desc="Round board face colour")
     # Lanterns
-    ln_ch = g.input("Lantern Chance", "FLOAT", 0.3, min=0, max=1, subtype="FACTOR", panel="Lanterns",
+    ln_ch = g.input("Wall Lantern Chance", "FLOAT", 0.3, min=0, max=1, subtype="FACTOR", panel="Lanterns",
                     desc="Share of lantern spots that get a lantern")
-    ln_col = g.input("Glow Color", "COLOR", (1.0, 0.55, 0.1, 1), panel="Lanterns", desc="Lantern light colour")
-    ln_str = g.input("Glow Strength", "FLOAT", 1.6, min=0, max=100, panel="Lanterns",
+    ln_col = g.input("Wall Lantern Glow", "COLOR", (1.0, 0.55, 0.1, 1), panel="Lanterns", desc="Lantern light colour")
+    ln_str = g.input("Wall Lantern Strength", "FLOAT", 1.6, min=0, max=100, panel="Lanterns",
                      desc="Emission strength of the panes")
     ln_fl = g.input("Flicker", "FLOAT", 0.12, min=0, max=1, subtype="FACTOR", panel="Lanterns",
                     desc="How much the glow flickers (0 = steady)")

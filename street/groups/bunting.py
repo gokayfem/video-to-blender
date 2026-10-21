@@ -233,43 +233,43 @@ def build():
                  desc="Width of each curb")
     vw = g.input("Verge Width", "FLOAT", 0.8, min=0, max=5, subtype="DISTANCE", panel="Street",
                  desc="Grass verge between curb and facade (strings anchor at the facade line)")
-    spacing = g.input("Spacing", "FLOAT", 3.0, min=0.8, max=50, subtype="DISTANCE", panel="Strings",
+    spacing = g.input("String Spacing", "FLOAT", 3.0, min=0.8, max=50, subtype="DISTANCE", panel="Strings",
                       desc="Mean distance between strings along the street (jittered +-25 %)")
-    height = g.input("Height", "FLOAT", 3.9, min=1, max=15, subtype="DISTANCE", panel="Strings",
+    height = g.input("String Height", "FLOAT", 3.9, min=1, max=15, subtype="DISTANCE", panel="Strings",
                      desc="Rope height at the facades")
-    sag = g.input("Sag", "FLOAT", 0.65, min=0, max=3, subtype="DISTANCE", panel="Strings",
+    sag = g.input("String Sag", "FLOAT", 0.65, min=0, max=3, subtype="DISTANCE", panel="Strings",
                   desc="How far the rope drops at mid-street")
-    skew = g.input("Skew", "FLOAT", 0.12, min=0, max=1, panel="Strings",
+    skew = g.input("String Skew", "FLOAT", 0.12, min=0, max=1, panel="Strings",
                    desc="Largest diagonal slope of a string (along-street shift per unit across)")
     rope_col = g.input("Rope Color", "COLOR", (0.088, 0.048, 0.025, 1.0), panel="Strings",
                        desc="Colour of the rope")
-    fsize = g.input("Size", "FLOAT", 0.28, min=0.05, max=1.5, subtype="DISTANCE", panel="Flags",
+    fsize = g.input("Flag Size", "FLOAT", 0.28, min=0.05, max=1.5, subtype="DISTANCE", panel="Flags",
                     desc="Pennant width (length is 1.15x)")
-    fspace = g.input("Spacing", "FLOAT", 0.50, min=0.1, max=3, subtype="DISTANCE", panel="Flags",
+    fspace = g.input("Flag Spacing", "FLOAT", 0.50, min=0.1, max=3, subtype="DISTANCE", panel="Flags",
                      desc="Distance between pennants along the rope")
-    cols = [g.input(f"Color {k + 1}", "COLOR", c, panel="Flags", desc=d) for k, (c, d) in enumerate([
+    cols = [g.input(f"Flag Color {k + 1}", "COLOR", c, panel="Flags", desc=d) for k, (c, d) in enumerate([
         ((0.70, 0.22, 0.15, 1), "Salmon pennants (30 %)"),
         ((0.92, 0.58, 0.30, 1), "Cream pennants (35 %)"),
         ((0.42, 0.46, 0.31, 1), "Sage pennants (23 %)"),
         ((0.28, 0.38, 0.49, 1), "Dusty blue pennants (12 %)")])]
-    missing = g.input("Missing Chance", "FLOAT", 0.04, min=0, max=1, subtype="FACTOR", panel="Flags",
+    missing = g.input("Missing Flag Chance", "FLOAT", 0.04, min=0, max=1, subtype="FACTOR", panel="Flags",
                       desc="Chance that a pennant is missing from the rope")
-    lchance = g.input("Chance", "FLOAT", 0.6, min=0, max=1, subtype="FACTOR", panel="Lanterns",
+    lchance = g.input("Paper Lantern Chance", "FLOAT", 0.6, min=0, max=1, subtype="FACTOR", panel="Lanterns",
                       desc="Chance of a lantern in each of the two lantern slots of a string")
-    lsize = g.input("Size", "FLOAT", 0.52, min=0.1, max=2, subtype="DISTANCE", panel="Lanterns",
+    lsize = g.input("Paper Lantern Size", "FLOAT", 0.52, min=0.1, max=2, subtype="DISTANCE", panel="Lanterns",
                     desc="Lantern paper height (its centre hangs 0.62x that below the rope)")
-    lglow = g.input("Glow Color", "COLOR", (1.0, 0.36, 0.05, 1.0), panel="Lanterns",
+    lglow = g.input("Paper Lantern Glow", "COLOR", (1.0, 0.36, 0.05, 1.0), panel="Lanterns",
                     desc="Colour of the light inside the paper")
-    lstr = g.input("Glow Strength", "FLOAT", 1.8, min=0, max=50, panel="Lanterns",
+    lstr = g.input("Paper Lantern Strength", "FLOAT", 1.8, min=0, max=50, panel="Lanterns",
                    desc="Emission strength of the lanterns")
-    wstr = g.input("Strength", "FLOAT", 1.0, min=0, max=20, panel="Wind",
+    wstr = g.input("Wind Strength", "FLOAT", 1.0, min=0, max=20, panel="Wind",
                    desc="Wind strength. 1 = the reference's light breeze (lanterns < 1 deg, flags ~3 deg); "
                         "4-6 = a clearly windy day")
-    wgust = g.input("Gust", "FLOAT", 0.6, min=0, max=1, subtype="FACTOR", panel="Wind",
+    wgust = g.input("Wind Gust", "FLOAT", 0.6, min=0, max=1, subtype="FACTOR", panel="Wind",
                     desc="How much the wind comes and goes (slow noise of time, travelling down the street)")
     wflut = g.input("Flutter Speed", "FLOAT", 0.6, min=0, max=5, panel="Wind",
                     desc="Pennant flutter frequency (Hz)")
-    wdir = g.input("Direction", "FLOAT", 0.0, subtype="ANGLE", panel="Wind",
+    wdir = g.input("Wind Direction", "FLOAT", 0.0, subtype="ANGLE", panel="Wind",
                    desc="Wind heading relative to the street: 0 = blowing along it (+s), 90 deg = across")
 
     def strparams(idx, clen):

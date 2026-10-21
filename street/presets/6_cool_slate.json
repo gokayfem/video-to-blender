@@ -1,0 +1,25 @@
+{
+ "Slate Mix": 1.0,
+ "Cream": [
+  0.55,
+  0.6,
+  0.62,
+  1.0
+ ],
+ "Peach": [
+  0.6,
+  0.62,
+  0.7,
+  1.0
+ ],
+ "Ochre": [
+  0.5,
+  0.55,
+  0.6,
+  1.0
+ ],
+ "Wall Lantern Chance": 0.9,
+ "Wall Lantern Strength": 4.0,
+ "Paper Lantern Strength": 5.0,
+ "Seed": 2
+}

@@ -23,22 +23,22 @@ Storybook Street  [15 nodes, 7 frames]
   SS Facades  [20 nodes, 5 frames]
     SS Facades Parcels  [64 nodes, 5 frames]
       SS Street Point ×4  [9 nodes, 3 frames] (see above)
-    SS House Plan  [169 nodes, 7 frames]
-    SS House Body  [210 nodes, 5 frames]
-      SS House Boxes ×7  [29 nodes, 2 frames]
-    SS House Timber  [192 nodes, 6 frames]
-      SS House Boxes ×5  [29 nodes, 2 frames] (see above)
-    SS House Windows  [93 nodes, 4 frames]
-      SS House Window  [108 nodes, 6 frames]
-        SS House Boxes ×8  [29 nodes, 2 frames] (see above)
+    SS House Plan  [184 nodes, 7 frames]
+    SS House Body  [205 nodes, 5 frames]
+      SS House Boxes ×7  [68 nodes, 4 frames]
+    SS House Timber  [186 nodes, 6 frames]
+      SS House Boxes ×5  [68 nodes, 4 frames] (see above)
+    SS House Windows  [97 nodes, 4 frames]
+      SS House Window  [106 nodes, 6 frames]
+        SS House Boxes ×8  [68 nodes, 4 frames] (see above)
     SS House Doors  [240 nodes, 8 frames]
-      SS House Boxes ×9  [29 nodes, 2 frames] (see above)
-      SS House Window  [108 nodes, 6 frames] (see above)
-    SS House Roof  [291 nodes, 7 frames]
-      SS House Boxes ×7  [29 nodes, 2 frames] (see above)
+      SS House Boxes ×9  [68 nodes, 4 frames] (see above)
+      SS House Window  [106 nodes, 6 frames] (see above)
+    SS House Roof  [294 nodes, 8 frames]
+      SS House Boxes ×7  [68 nodes, 4 frames] (see above)
     SS House Cut  [23 nodes, 3 frames]
     SS House Place ×2  [19 nodes, 3 frames]
-  SS Props  [181 nodes, 9 frames]
+  SS Props  [186 nodes, 9 frames]
     SS Prop Window Box  [36 nodes, 3 frames]
       SS Prop Rounded Box ×3  [19 nodes, 2 frames]
       SS Prop Foliage ×2  [68 nodes, 4 frames]
@@ -46,7 +46,7 @@ Storybook Street  [15 nodes, 7 frames]
         SS Prop Blossom  [12 nodes, 1 frames]
     SS Prop Awning  [69 nodes, 5 frames]
       SS Prop Rod ×3  [4 nodes, 0 frames]
-    SS Prop Sign  [54 nodes, 2 frames]
+    SS Prop Sign  [56 nodes, 2 frames]
       SS Prop Rounded Box ×2  [19 nodes, 2 frames] (see above)
       SS Prop Rod ×4  [4 nodes, 0 frames] (see above)
       SS Prop Ring  [4 nodes, 0 frames]
@@ -82,7 +82,7 @@ Storybook Street  [15 nodes, 7 frames]
     SS Walker Leg ×2  [27 nodes, 3 frames]
 ```
 
-55 Geometry Nodes groups (3237 nodes), 0 shader groups.
+55 Geometry Nodes groups (3292 nodes), 0 shader groups.
 
 ## Groups
 
@@ -170,7 +170,7 @@ Continuous rows of half-timbered storybook houses along both sides of the path c
 
 Blocks: Anchors for SS Props: same transform, then only the interface a; Cut the window and door reveals into the walls; Everything to the world through each house's frame; The parts, modelled in house-local space; Where the houses stand: parcels on both sides, then every rando
 
-Inputs: Curve, Seed, Street Width, Curb Width, Curb Height, Verge Width, Width Min, Width Max, Storeys Min, Storeys Max, Ground Floor Height, Floor Height, Jetty Depth, Stagger, Depth, Timber Density, Brace Mix, Timber Color, Beam Width, Window Density, Window Size, Shutter Chance, Shutter Color, Shop Chance, Arch Chance, Door Brown, Door Teal, Door Green, Pitch, Overhang, Gable Mix, Slate Mix, Chimney Chance, Tile Color, Slate Color, Cream, Peach, Ochre, Terracotta, Yellow, Sage
+Inputs: Curve, Seed, Street Width, Curb Width, Curb Height, Verge Width, Width Min, Width Max, Storeys Min, Storeys Max, Ground Floor Height, Floor Height, Jetty Depth, Stagger, Depth, Timber Density, Brace Mix, Timber Color, Beam Width, Window Density, Window Size, Shutter Chance, Shutter Color, Shop Chance, Arch Chance, Door Brown, Door Teal, Door Green, Pitch, Overhang, Gable Mix, Slate Mix, Tower Chance, Chimney Chance, Tile Color, Slate Color, Cream, Peach, Ochre, Terracotta, Yellow, Sage
 
 Outputs: Geometry, Anchors
 
@@ -188,7 +188,7 @@ Outputs: Houses
 
 Plaster wall blocks per storey with jettied upper floors, the bressummer beams and joist ends at each jetty, carved corbels under them, and a stone plinth either side of the door
 
-Blocks: Bressummer at every floor line and the wall plate under the eav; Carved corbels: angled struts from the lower wall up under each; Joist ends poking out under each jetty; Stone plinth (houses with h_plinth): two runs, either side of t; Wall blocks: one plaster box per storey, each jettied further t
+Blocks: Bressummer at every floor line and the wall plate under the eav; Carved corbels: angled struts under each jetty at the two party; Joist ends: short stubs under each jetty (jettied houses only); Stone plinth (houses with h_plinth): two runs, either side of t; Wall blocks: one plaster box per storey, each jettied further t
 
 Inputs: Houses, Timber Color, Beam Width
 
@@ -196,9 +196,9 @@ Outputs: Walls, Geometry
 
 ### SS House Boxes
 
-One shaped piece per point: a box, a roof prism, a cylinder or an arch ring, at Center with Size and Rotation (house-local). Writes ss_color, ss_size, ss_rand; the unit shape carries ss_unit
+One shaped piece per point: a chamfered box, a roof prism, a cylinder or an arch ring, at Center with Size and Rotation (house-local). Boxes get a small chamfer of fixed size on every edge (the toy-like bevel). Writes ss_color, ss_size, ss_rand; the unit shape carries ss_unit
 
-Blocks: One piece per point: move to Center, record tint and size, inst; Unit shapes (1 H cube bounds); ss_unit = position + 0.5 gives m
+Blocks: Boxes: rebuild each corner at full size minus a fixed chamfer (; Chamfered unit box: hull of three cubes each inset on two axes;; One piece per point: move to Center, record tint and size, inst; Other unit shapes (1 H cube bounds); ss_unit = position + 0.5 g
 
 Inputs: Points, Selection, Center, Size, Rotation, Color, Shape, Material
 
@@ -240,7 +240,7 @@ Every random decision per house, written as h_* attributes: storeys and floor he
 
 Blocks: Door: side, width, height, arch, colour; Ground floor span beside the door: a shopfront or 0-2 windows; Plaster colour: one of the palette, value jittered; Roof: gable or eaves to the street, clay or slate, chimney; Storeys and floor heights (a few % per house so beams and eaves; Timber pattern: 0 plain, 1 posts and rails, 2 corner braces, 3 ; Windows: columns per storey from the width, sizes that fit with
 
-Inputs: Houses, Seed, Curb Height, Storeys Min, Storeys Max, Ground Floor Height, Floor Height, Jetty Depth, Timber Density, Brace Mix, Window Density, Window Size, Shutter Chance, Shutter Color, Shop Chance, Arch Chance, Door Brown, Door Teal, Door Green, Gable Mix, Slate Mix, Chimney Chance, Tile Color, Slate Color, Cream, Peach, Ochre, Terracotta, Yellow, Sage
+Inputs: Houses, Seed, Curb Height, Storeys Min, Storeys Max, Ground Floor Height, Floor Height, Jetty Depth, Timber Density, Brace Mix, Window Density, Window Size, Shutter Chance, Shutter Color, Shop Chance, Arch Chance, Door Brown, Door Teal, Door Green, Gable Mix, Slate Mix, Tower Chance, Chimney Chance, Tile Color, Slate Color, Cream, Peach, Ochre, Terracotta, Yellow, Sage
 
 Outputs: Houses
 
@@ -248,7 +248,7 @@ Outputs: Houses
 
 Roof per house: eaves to the street (ridge along the wall) or a gable to the street (ridge into the block), two tiled slabs at the roof pitch with eaves overhang, a plaster attic prism under them, a ridge cap, timbered gables and an optional chimney
 
-Blocks: Attic prism (plaster gable ends) under the slabs; Chimney: a stone stack through the roof with a cap; Gable timbers (timbered gable houses): collar beam and king pos; Rafter tails under the front eave (eaves-to-street roofs); Ridge cap; Roof frame: wall top, ridge height, half-span; eaves roofs span; Two slabs: from the ridge down past the wall by the overhang
+Blocks: Attic prism (plaster gable ends) under the slabs; Chimney: a stone stack through the roof with a cap; Gable timbers (timbered gable houses): collar beam and king pos; Per-house pitch: towers (h_tower) get a steep spire-like roof; Rafter tails under the front eave (eaves-to-street roofs); Ridge cap; Roof frame: wall top, ridge height, half-span; eaves roofs span; Two slabs: from the ridge down past the wall by the overhang
 
 Inputs: Houses, Pitch, Overhang, Timber Color, Beam Width
 
@@ -258,7 +258,7 @@ Outputs: Geometry
 
 Half-timber frames on the facades. Pattern per house (h_timber): 0 plain plaster, 1 posts and rails, 2 posts, rails and full-height corner braces, 3 posts, rails and St Andrew's crosses under the windows
 
-Blocks: Corner posts on every timbered storey; Pattern 2: full-height braces in the corner bays; Pattern 3: St Andrew's crosses under every window; Timbered storeys: one point per storey of every timbered house; Upper storeys: posts between the window columns; Upper storeys: sill rail under the windows, and a head rail ove
+Blocks: Party-wall post on every timbered storey, at the house's -x end; Pattern 2: full-height braces in the corner bays; Pattern 3: St Andrew's crosses under every window; Timbered storeys: one point per storey of every timbered house; Upper storeys: one sill rail under the windows; Upper storeys: posts between the window columns
 
 Inputs: Houses, Timber Color, Beam Width
 
@@ -284,11 +284,35 @@ Inputs: Houses, Seed, Timber Color
 
 Outputs: Geometry, Cutters, Anchors
 
-### SS Post
+### SS Post Reference
 
-Distance haze from the mist pass, then soft glare
+Haze by mist depth on premultiplied geometry, over a screen-space sky gradient, glow
 
-Blocks: Haze: mix toward the warm horizon colour by mist depth; Soft glow on bright lanterns and highlights
+Blocks: Haze: premultiplied geometry toward the horizon colour by mist ; Sky: gradient by screen height, behind the geometry; Soft glow on bright lanterns and highlights
+
+Outputs: Image
+
+### SS Post Transfer Hill
+
+Haze by mist depth on premultiplied geometry, over a screen-space sky gradient, glow
+
+Blocks: Haze: premultiplied geometry toward the horizon colour by mist ; Sky: gradient by screen height, behind the geometry; Soft glow on bright lanterns and highlights
+
+Outputs: Image
+
+### SS Post Transfer S-Bend
+
+Haze by mist depth on premultiplied geometry, over a screen-space sky gradient, glow
+
+Blocks: Haze: premultiplied geometry toward the horizon colour by mist ; Sky: gradient by screen height, behind the geometry; Soft glow on bright lanterns and highlights
+
+Outputs: Image
+
+### SS Post Transfer Spiral
+
+Haze by mist depth on premultiplied geometry, over a screen-space sky gradient, glow
+
+Blocks: Haze: premultiplied geometry toward the horizon colour by mist ; Sky: gradient by screen height, behind the geometry; Soft glow on bright lanterns and highlights
 
 Outputs: Image
 
@@ -314,9 +338,9 @@ Outputs: Geometry
 
 ### SS Prop Blossom
 
-A geranium head: a dome of five round florets, base at the origin, opening towards +Z
+A geranium head: a dome of four round florets, base at the origin, opening towards +Z
 
-Blocks: Four florets in a ring and one on top
+Blocks: Three florets in a ring and one on top
 
 Inputs: Size
 
@@ -402,7 +426,7 @@ Hanging shop sign: wall plate, iron bar with scrolls, and a board hanging from t
 
 Blocks: Board (pivot on the bar): bread board or round board, two hooks; Bracket: wall plate, bar, diagonal brace, two scrolls, ball fin
 
-Inputs: Round, Swing, Paint Color
+Inputs: Round, Swing, Paint Color, Size
 
 Outputs: Geometry
 
@@ -422,7 +446,7 @@ Window boxes, awnings, hanging signs, wall lanterns, ivy, and pots and barrels o
 
 Blocks: Anchor fields: position, frame (ss_rot), width, per-anchor rand; Awnings over shopfronts (anchor 4): width + 0.5, colour picked ; Hanging signs (anchor 6): bread or round board, swinging as a p; Ivy around doors (anchor 3); Verge clusters (anchor 7): Cluster Size slots side by side alon; Verge: move each slot out from the wall in the anchor frame, in; Verge: what stands in each slot (0 barrel, 1 leafy pot, 2 flowe; Wall lanterns (anchor 5): instanced; glow colour and flickering; Window boxes on sills (anchor 1, 2): one box per sill, as long 
 
-Inputs: Anchors, Curve, Seed, Time, Window Box Chance, Flower Density, Flower Red, Flower Coral, Flower White, Leaf Color, Awning Chance, Stripe Blue, Stripe Pink, Stripe Red, Awning Depth, Stripe Width, Sign Chance, Round Share, Sign Paint, Lantern Chance, Glow Color, Glow Strength, Flicker, Pot Chance, Barrel Chance, Cluster Size, Pot Size, Ivy Chance, Ivy Spread, Sign Swing, Swing Period
+Inputs: Anchors, Curve, Seed, Time, Window Box Chance, Upper Floor Share, Flower Density, Flower Red, Flower Coral, Flower White, Leaf Color, Awning Chance, Stripe Blue, Stripe Pink, Stripe Red, Awning Depth, Stripe Width, Sign Chance, Round Share, Sign Paint, Lantern Chance, Glow Color, Glow Strength, Flicker, Pot Chance, Barrel Chance, Cluster Size, Pot Size, Ivy Chance, Ivy Spread, Sign Swing, Swing Period
 
 Outputs: Geometry
 
